@@ -1,0 +1,6 @@
+{
+  "name": "Bashar Youtube Grow",
+  "description": "YouTube video view and watchtime community booster with reward credits and custom campaign management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

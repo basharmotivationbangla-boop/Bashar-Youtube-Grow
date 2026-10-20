@@ -1,0 +1,180 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.:]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // 0. Connection Healthcheck
+    match /test/{testId} {
+      allow read: if true;
+    }
+
+    // 1. User Profiles & Credits & Daily Check-in Streak
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'credits', 'createdAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'displayName', 'photoURL', 'credits', 'referredBy', 'lastCheckInDate', 'checkInStreak', 'createdAt', 'updatedAt']) &&
+        data.uid is string && data.uid.size() <= 128 && data.uid == request.auth.uid &&
+        data.email is string && data.email.size() <= 128 &&
+        (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 128)) &&
+        (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500)) &&
+        (!('referredBy' in data) || (data.referredBy is string && data.referredBy.size() <= 128)) &&
+        (!('lastCheckInDate' in data) || (data.lastCheckInDate is string && data.lastCheckInDate.size() <= 32)) &&
+        (!('checkInStreak' in data) || (data.checkInStreak is number && data.checkInStreak >= 0 && data.checkInStreak <= 365)) &&
+        data.credits is number && data.credits >= 0 &&
+        data.createdAt is string && data.createdAt.size() <= 64 &&
+        (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) &&
+        isValidId(userId) &&
+        isValidUser(incoming()) &&
+        incoming().credits <= 500; // Welcome credits cap on creation
+      allow update: if isOwner(userId) &&
+        isValidUser(incoming()) &&
+        incoming().uid == existing().uid &&
+        incoming().createdAt == existing().createdAt &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['credits', 'displayName', 'photoURL', 'lastCheckInDate', 'checkInStreak', 'updatedAt']);
+    }
+
+    // 2. Video Campaigns
+    function isValidVideoCampaign(data) {
+      return data.keys().hasAll(['id', 'userId', 'videoId', 'videoTitle', 'targetSeconds', 'costPerView', 'targetViews', 'completedViews', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'userId', 'creatorEmail', 'videoUrl', 'videoId', 'videoTitle', 'targetSeconds', 'costPerView', 'targetViews', 'completedViews', 'status', 'createdAt', 'updatedAt']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.userId is string && data.userId.size() <= 128 &&
+        (!('creatorEmail' in data) || (data.creatorEmail is string && data.creatorEmail.size() <= 128)) &&
+        (!('videoUrl' in data) || (data.videoUrl is string && data.videoUrl.size() <= 300)) &&
+        data.videoId is string && data.videoId.size() >= 5 && data.videoId.size() <= 64 &&
+        data.videoTitle is string && data.videoTitle.size() > 0 && data.videoTitle.size() <= 200 &&
+        data.targetSeconds is number && data.targetSeconds >= 5 && data.targetSeconds <= 7200 &&
+        data.costPerView == data.targetSeconds &&
+        data.targetViews is number && data.targetViews >= 1 && data.targetViews <= 50000 &&
+        data.completedViews is number && data.completedViews >= 0 &&
+        data.status in ['active', 'paused', 'completed'] &&
+        data.createdAt is string && data.createdAt.size() <= 64 &&
+        (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
+    }
+
+    match /videoCampaigns/{campaignId} {
+      allow read: if true;
+      allow create: if isSignedIn() &&
+        isValidId(campaignId) &&
+        incoming().userId == request.auth.uid &&
+        isValidVideoCampaign(incoming()) &&
+        incoming().completedViews >= 0 &&
+        incoming().status == 'active';
+      allow update: if isSignedIn() &&
+        isValidVideoCampaign(incoming()) &&
+        incoming().id == existing().id &&
+        incoming().userId == existing().userId &&
+        incoming().createdAt == existing().createdAt &&
+        (
+          // Creator actions: edit status, targetViews, updatedAt
+          (existing().userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'targetViews', 'videoTitle', 'updatedAt'])) ||
+          // Viewer action: atomic increment of completedViews and status update if completed (Strictly capped at targetViews)
+          (incoming().diff(existing()).affectedKeys().hasOnly(['completedViews', 'status', 'updatedAt']) && 
+           existing().completedViews < existing().targetViews &&
+           incoming().completedViews == existing().completedViews + 1 &&
+           (incoming().completedViews >= existing().targetViews ? incoming().status == 'completed' : (incoming().status == 'active' || incoming().status == existing().status)))
+        );
+      allow delete: if isSignedIn() && (existing().userId == request.auth.uid || request.auth.token.email == 'basharmotivationbangla@gmail.com');
+    }
+
+    // 3. View Records
+    function isValidViewRecord(data) {
+      return data.keys().hasAll(['id', 'userId', 'campaignId', 'videoId', 'secondsWatched', 'creditsEarned', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'userId', 'campaignId', 'videoId', 'secondsWatched', 'creditsEarned', 'createdAt']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.userId is string && data.userId == request.auth.uid &&
+        data.campaignId is string && data.campaignId.size() <= 128 &&
+        data.videoId is string && data.videoId.size() <= 64 &&
+        data.secondsWatched is number && data.secondsWatched >= 5 && data.secondsWatched <= 7200 &&
+        data.creditsEarned == data.secondsWatched &&
+        data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    match /viewRecords/{recordId} {
+      allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() &&
+        isValidId(recordId) &&
+        isValidViewRecord(incoming());
+      allow update, delete: if false;
+    }
+
+    // 4. Transactions (Includes checkin_reward and referral_reward)
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['id', 'userId', 'type', 'amount', 'description', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'userId', 'type', 'amount', 'description', 'createdAt']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.userId is string && data.userId == request.auth.uid &&
+        data.type in ['bonus', 'view_reward', 'campaign_created', 'campaign_refund', 'checkin_reward', 'referral_reward'] &&
+        data.amount is number &&
+        data.description is string && data.description.size() <= 200 &&
+        data.createdAt is string && data.createdAt.size() <= 64;
+    }
+
+    match /transactions/{txId} {
+      allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid);
+      allow create: if isSignedIn() &&
+        isValidId(txId) &&
+        isValidTransaction(incoming());
+      allow update, delete: if false;
+    }
+
+    // 5. Referral Records
+    function isValidReferral(data) {
+      return data.keys().hasAll(['id', 'referrerUid', 'referredUserId', 'rewardCredits', 'status', 'createdAt']) &&
+        data.keys().hasOnly(['id', 'referrerUid', 'referredUserId', 'referredUserName', 'rewardCredits', 'status', 'createdAt', 'claimedAt']) &&
+        data.id is string && data.id.size() <= 128 &&
+        data.referrerUid is string && data.referrerUid.size() <= 128 &&
+        data.referredUserId is string && data.referredUserId.size() <= 128 &&
+        (!('referredUserName' in data) || (data.referredUserName is string && data.referredUserName.size() <= 128)) &&
+        data.rewardCredits == 1000 &&
+        data.status in ['pending', 'claimed'] &&
+        data.createdAt is string && data.createdAt.size() <= 64 &&
+        (!('claimedAt' in data) || (data.claimedAt is string && data.claimedAt.size() <= 64));
+    }
+
+    match /referrals/{refId} {
+      allow read: if isSignedIn() && (resource.data.referrerUid == request.auth.uid || resource.data.referredUserId == request.auth.uid);
+      allow create: if isSignedIn() &&
+        isValidId(refId) &&
+        isValidReferral(incoming()) &&
+        incoming().referredUserId == request.auth.uid &&
+        incoming().referrerUid != request.auth.uid;
+      allow update: if isSignedIn() &&
+        isValidReferral(incoming()) &&
+        resource.data.referrerUid == request.auth.uid &&
+        existing().status == 'pending' &&
+        incoming().status == 'claimed' &&
+        incoming().diff(existing()).affectedKeys().hasOnly(['status', 'claimedAt']);
+      allow delete: if false;
+    }
+  }
+}

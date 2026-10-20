@@ -1,0 +1,109 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with credit balance, streak, and account details",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "maxLength": 128, "description": "Auth UID" },
+        "email": { "type": "string", "maxLength": 128, "description": "User email address" },
+        "displayName": { "type": "string", "maxLength": 128, "description": "Display name" },
+        "photoURL": { "type": "string", "maxLength": 500, "description": "Avatar URL" },
+        "credits": { "type": "number", "description": "Current available credits balance" },
+        "lastCheckInDate": { "type": "string", "maxLength": 32, "description": "Last claimed date YYYY-MM-DD" },
+        "checkInStreak": { "type": "number", "description": "Consecutive days streak count" },
+        "createdAt": { "type": "string", "description": "Account creation ISO timestamp" },
+        "updatedAt": { "type": "string", "description": "Last update ISO timestamp" }
+      },
+      "required": ["uid", "email", "credits", "createdAt"]
+    },
+    "VideoCampaign": {
+      "title": "VideoCampaign",
+      "description": "YouTube video view campaign created by a user with custom seconds and views",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "description": "Campaign unique ID" },
+        "userId": { "type": "string", "maxLength": 128, "description": "Creator UID" },
+        "creatorEmail": { "type": "string", "maxLength": 128, "description": "Creator email" },
+        "videoUrl": { "type": "string", "maxLength": 300, "description": "Full YouTube URL" },
+        "videoId": { "type": "string", "maxLength": 64, "description": "YouTube 11-char Video ID" },
+        "videoTitle": { "type": "string", "maxLength": 200, "description": "Title of the video" },
+        "targetSeconds": { "type": "number", "description": "Watch seconds chosen freely (e.g. 5 to 7200)" },
+        "costPerView": { "type": "number", "description": "1 credit per second" },
+        "targetViews": { "type": "number", "description": "Target number of views chosen freely" },
+        "completedViews": { "type": "number", "description": "Views completed so far" },
+        "status": { "type": "string", "enum": ["active", "paused", "completed"], "description": "Campaign status" },
+        "createdAt": { "type": "string", "description": "Creation ISO timestamp" },
+        "updatedAt": { "type": "string", "description": "Last updated ISO timestamp" }
+      },
+      "required": ["id", "userId", "videoId", "videoTitle", "targetSeconds", "costPerView", "targetViews", "completedViews", "status", "createdAt"]
+    },
+    "ViewRecord": {
+      "title": "ViewRecord",
+      "description": "Log of a video view completed by a user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "description": "Record unique ID" },
+        "userId": { "type": "string", "maxLength": 128, "description": "Viewer UID" },
+        "campaignId": { "type": "string", "maxLength": 128, "description": "Video campaign ID" },
+        "videoId": { "type": "string", "maxLength": 64, "description": "YouTube video ID" },
+        "secondsWatched": { "type": "number", "description": "Seconds watched" },
+        "creditsEarned": { "type": "number", "description": "Credits earned = secondsWatched" },
+        "createdAt": { "type": "string", "description": "Timestamp" }
+      },
+      "required": ["id", "userId", "campaignId", "videoId", "secondsWatched", "creditsEarned", "createdAt"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Credit balance change ledger entry",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "description": "Transaction ID" },
+        "userId": { "type": "string", "maxLength": 128, "description": "User UID" },
+        "type": { "type": "string", "enum": ["bonus", "view_reward", "campaign_created", "campaign_refund", "checkin_reward", "referral_reward"], "description": "Type of transaction" },
+        "amount": { "type": "number", "description": "Credit amount positive or negative" },
+        "description": { "type": "string", "maxLength": 200, "description": "Human readable memo" },
+        "createdAt": { "type": "string", "description": "Timestamp" }
+      },
+      "required": ["id", "userId", "type", "amount", "description", "createdAt"]
+    },
+    "Referral": {
+      "title": "Referral",
+      "description": "Referral record when a new user signs up with an invite link",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "description": "Referral unique ID" },
+        "referrerUid": { "type": "string", "maxLength": 128, "description": "Inviter User Auth UID" },
+        "referredUserId": { "type": "string", "maxLength": 128, "description": "Invited User Auth UID" },
+        "referredUserName": { "type": "string", "maxLength": 128, "description": "Name or email handle of invited user" },
+        "rewardCredits": { "type": "number", "description": "1000 credits earned per referral" },
+        "status": { "type": "string", "enum": ["pending", "claimed"], "description": "Status of reward" },
+        "createdAt": { "type": "string", "description": "Signup ISO timestamp" },
+        "claimedAt": { "type": "string", "description": "Reward claimed timestamp" }
+      },
+      "required": ["id", "referrerUid", "referredUserId", "rewardCredits", "status", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "User account documents keyed by Auth UID"
+    },
+    "/videoCampaigns/{campaignId}": {
+      "schema": { "$ref": "#/entities/VideoCampaign" },
+      "description": "Active and past YouTube video view campaigns"
+    },
+    "/viewRecords/{recordId}": {
+      "schema": { "$ref": "#/entities/ViewRecord" },
+      "description": "Completed video view proofs"
+    },
+    "/transactions/{txId}": {
+      "schema": { "$ref": "#/entities/Transaction" },
+      "description": "User credit audit history"
+    },
+    "/referrals/{referralId}": {
+      "schema": { "$ref": "#/entities/Referral" },
+      "description": "Invite link referral records"
+    }
+  }
+}
