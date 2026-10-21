@@ -14,7 +14,9 @@ import {
   ChevronRight,
   Sparkles,
   Users,
-  Flame
+  Flame,
+  Key,
+  Database
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { logOut } from '../firebase';
@@ -26,6 +28,7 @@ interface NavbarProps {
   onOpenDailyCheckIn: () => void;
   onOpenRedeemModal: () => void;
   onOpenReferralModal?: () => void;
+  onOpenDatabaseStatus?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ 
@@ -34,7 +37,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenHowItWorks,
   onOpenDailyCheckIn,
   onOpenRedeemModal,
-  onOpenReferralModal
+  onOpenReferralModal,
+  onOpenDatabaseStatus
 }) => {
   const { userProfile, openAuthModal } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -95,8 +99,71 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             </div>
 
-            {/* Right Elements: Help + Credits + Auth (Tabs are hidden from home header) */}
-            <div className="flex items-center gap-2.5">
+            {/* Middle: Desktop Segmented Navigation Tabs */}
+            <nav className="hidden md:flex items-center gap-1 bg-slate-900/90 border border-slate-800/90 p-1 rounded-2xl shadow-inner">
+              <button
+                onClick={() => onSelectTab('watch')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  currentTab === 'watch'
+                    ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md shadow-red-600/30'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                <span>ভিডিও দেখুন</span>
+              </button>
+
+              <button
+                onClick={() => onSelectTab('create')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  currentTab === 'create'
+                    ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md shadow-red-600/30'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                <span>ক্যাম্পেইন তৈরি</span>
+              </button>
+
+              <button
+                onClick={() => onSelectTab('dashboard')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  currentTab === 'dashboard'
+                    ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md shadow-red-600/30'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
+                }`}
+              >
+                <LayoutDashboard className="w-3.5 h-3.5" />
+                <span>আমার ড্যাশবোর্ড</span>
+              </button>
+            </nav>
+
+            {/* Right Elements: Promo Code + Daily Check-in + Help + Credits + Auth */}
+            <div className="flex items-center gap-2 sm:gap-2.5">
+              {/* Powerful Cloud Database Status Indicator & Modal Trigger */}
+              <button
+                onClick={onOpenDatabaseStatus}
+                title="Google Cloud Firestore ডাটাবেস স্ট্যাটাস দেখুন"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-2xl text-xs font-bold bg-slate-900/90 hover:bg-slate-800 border border-emerald-500/30 hover:border-emerald-500/60 text-emerald-300 hover:text-emerald-200 transition-all shadow-sm cursor-pointer active:scale-95 group"
+              >
+                <Database className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
+                <span className="hidden xl:inline">ক্লাউড ডাটাবেস</span>
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 shadow-sm"></span>
+                </span>
+              </button>
+
+              {/* Promo Code Quick Redeem Button */}
+              <button
+                onClick={onOpenRedeemModal}
+                title="প্রমো কোড রিডিম করুন"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs font-bold bg-slate-900/90 hover:bg-slate-800 border border-amber-500/30 text-amber-300 hover:text-amber-200 transition-all shadow-sm cursor-pointer active:scale-95"
+              >
+                <Key className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden lg:inline">প্রমো কোড</span>
+              </button>
+
               {/* Help button */}
               <button
                 onClick={onOpenHowItWorks}
@@ -436,6 +503,24 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <span>প্রমো কোড রিডিম করুন</span>
                   </div>
                   <ChevronRight className="w-3.5 h-3.5 opacity-60" />
+                </button>
+
+                {/* 7. শক্তিশালী ক্লাউড ডাটাবেস */}
+                <button
+                  onClick={() => {
+                    setDrawerOpen(false);
+                    onOpenDatabaseStatus?.();
+                  }}
+                  className="w-full flex items-center justify-between p-3 rounded-2xl text-xs font-semibold bg-emerald-950/30 hover:bg-emerald-900/40 text-emerald-300 hover:text-emerald-200 border border-emerald-500/30 transition-all cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Database className="w-4 h-4 text-emerald-400" />
+                    <span>শক্তিশালী ক্লাউড ডাটাবেস</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/20 px-2 py-0.5 rounded-full">লাইভ</span>
+                    <ChevronRight className="w-3.5 h-3.5 opacity-60" />
+                  </div>
                 </button>
 
                 {/* Special Video Delete / Management shortcut */}

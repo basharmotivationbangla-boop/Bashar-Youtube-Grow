@@ -97,13 +97,13 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({ isOpen, onClos
             </div>
           </div>
 
-          {/* Rule 6: Exact View Target Guarantee */}
+          {/* Rule 6: Exact View Target Guarantee & Retirement */}
           <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 shadow-sm">
             <ShieldCheck className="w-6 h-6 text-cyan-400 shrink-0 mt-0.5" />
             <div>
-              <h4 className="text-sm font-bold text-cyan-300">৬. নিখুঁত ভিউ কন্ট্রোল (১০ দিলে ঠিক ১০ বারই)</h4>
+              <h4 className="text-sm font-bold text-cyan-300">৬. নিখুঁত ভিউ কন্ট্রোল ও প্রচার সমাপ্তি</h4>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                আপনি যে কয়টি ভিউ (যেমন ১০ ভিউ) নির্ধারণ করবেন, সিস্টেমে ঠিক ততবারই ভিউ প্রদান করা হবে। ১০ ভিউ দিলে নির্ধারিত ১০ বার সম্পন্ন হওয়ামাত্র ক্যাম্পেইন স্বয়ংক্রিয়ভাবে সমাপ্ত হবে—এর বেশি এক বারও হবে না।
+                আপনি যে কয়টি ভিউ (যেমন ১০ ভিউ) নির্ধারণ করবেন, সিস্টেমে ঠিক ততবারই দেখা হবে। নির্ধারিত ভিউ সম্পূর্ণ হওয়ামাত্রই ভিডিওটি পাবলিক ভিডিও দেখার ফিড থেকে স্বয়ংক্রিয়ভাবে প্রত্যাহার হবে এবং আর প্রকাশিত হবে না।
               </p>
             </div>
           </div>

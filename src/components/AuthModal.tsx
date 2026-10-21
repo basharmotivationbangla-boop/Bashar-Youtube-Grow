@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { X, Mail, Lock, User, Gift, AlertCircle, ArrowRight, CheckCircle2, ShieldCheck, Flame, Sparkles, RefreshCw, Zap } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { signUpWithEmail, loginWithEmail, signInWithGoogle } from '../firebase';
+import { signUpWithEmail, loginWithEmail, signInWithGoogle, loginAnonymously } from '../firebase';
 import confetti from 'canvas-confetti';
 
 export const AuthModal: React.FC = () => {
@@ -16,6 +16,27 @@ export const AuthModal: React.FC = () => {
   const [showGooglePrompt, setShowGooglePrompt] = useState(false);
 
   if (!isAuthModalOpen) return null;
+
+  const handleInstantGuestSignIn = async () => {
+    setError(null);
+    setLoading(true);
+    setShowGooglePrompt(false);
+    try {
+      await loginAnonymously();
+      confetti({ particleCount: 100, spread: 80, origin: { y: 0.5 } });
+      closeAuthModal();
+    } catch (err: any) {
+      console.warn('Anonymous login error:', err?.code, err?.message);
+      if (err?.code === 'auth/operation-not-allowed') {
+        setShowGooglePrompt(true);
+        setError('Firebase এ Anonymous বা Email সাইন-ইন চালু নেই। দয়া করে "Google দিয়ে সাইন ইন করুন" বাটনে ক্লিক করুন।');
+      } else {
+        setError(err?.message || 'গেস্ট লগইন করার সময় সমস্যা হয়েছে।');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleGoogleSignIn = async () => {
     setError(null);
@@ -206,12 +227,23 @@ export const AuthModal: React.FC = () => {
             <span>Google দিয়ে সাইন ইন করুন</span>
           </button>
 
+          {/* Instant 1-Click Guest Sign In */}
+          <button
+            type="button"
+            onClick={handleInstantGuestSignIn}
+            disabled={loading}
+            className="w-full mb-3 flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold py-2.5 px-4 rounded-2xl transition-all shadow-md shadow-emerald-900/30 active:scale-[0.98] disabled:opacity-50 text-xs sm:text-sm cursor-pointer"
+          >
+            <Zap className="w-4 h-4 text-amber-300 fill-amber-300" />
+            <span>⚡ তাৎক্ষণিক ১-ক্লিক গেস্ট লগইন (পাসওয়ার্ড ছাড়াই)</span>
+          </button>
+
           <div className="relative my-4">
             <div className="absolute inset-0 flex items-center">
               <div className="w-full border-t border-slate-800"></div>
             </div>
             <div className="relative flex justify-center text-xs">
-              <span className="bg-slate-900 px-3 text-slate-500 font-medium">অথবা ইমেইল একাউন্ট</span>
+              <span className="bg-slate-900 px-3 text-slate-500 font-medium">অথবা পাসওয়ার্ড দিয়ে</span>
             </div>
           </div>
 

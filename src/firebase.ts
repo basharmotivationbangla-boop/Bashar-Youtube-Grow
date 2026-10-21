@@ -5,6 +5,7 @@ import {
   signInWithPopup,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  signInAnonymously,
   updateProfile,
   signOut,
   User as FirebaseUser
@@ -118,8 +119,8 @@ export async function ensureUserProfile(user: FirebaseUser): Promise<UserProfile
       // Create new user profile with 500 initial credits
       const newProfile: UserProfile = {
         uid: user.uid,
-        email: user.email || 'user@example.com',
-        displayName: user.displayName || user.email?.split('@')[0] || 'User',
+        email: user.email || (user.isAnonymous ? `guest_${user.uid.slice(0, 6)}@basharyt.com` : 'user@example.com'),
+        displayName: user.displayName || (user.isAnonymous ? `গেস্ট ইউজার ${user.uid.slice(0, 4)}` : user.email?.split('@')[0] || 'User'),
         photoURL: user.photoURL || '',
         credits: WELCOME_CREDITS, // 500 credits bonus!
         ...(validReferrer ? { referredBy: validReferrer } : {}),
@@ -204,6 +205,27 @@ export async function claimReferralReward(referrerUid: string, referral: Referra
   await setDoc(txRef, tx);
 }
 
+// Google Cloud Firestore Database Connection Info
+export const databaseInfo = {
+  provider: 'Google Cloud Firestore',
+  projectId: firebaseConfig.projectId,
+  databaseId: firebaseConfig.firestoreDatabaseId,
+  isSecure: true,
+  status: 'online',
+  region: 'asia-southeast1 (Multi-Region / High Availability)'
+};
+
+// Check Database Live Health
+export async function checkDatabaseHealth(): Promise<{ success: boolean; latencyMs: number; error?: string }> {
+  const startTime = Date.now();
+  try {
+    await getDocFromServer(doc(db, 'test', 'connection'));
+    return { success: true, latencyMs: Date.now() - startTime };
+  } catch (error: any) {
+    return { success: false, latencyMs: Date.now() - startTime, error: error?.message };
+  }
+}
+
 // Google Sign In
 export async function signInWithGoogle(): Promise<UserProfile> {
   const result = await signInWithPopup(auth, googleProvider);
@@ -222,6 +244,12 @@ export async function signUpWithEmail(email: string, pass: string, displayName: 
 // Email Sign In
 export async function loginWithEmail(email: string, pass: string): Promise<UserProfile> {
   const cred = await signInWithEmailAndPassword(auth, email, pass);
+  return await ensureUserProfile(cred.user);
+}
+
+// Anonymous / Instant Guest Sign In
+export async function loginAnonymously(): Promise<UserProfile> {
+  const cred = await signInAnonymously(auth);
   return await ensureUserProfile(cred.user);
 }
 

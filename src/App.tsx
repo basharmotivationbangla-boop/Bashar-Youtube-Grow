@@ -14,7 +14,8 @@ import { HowItWorksModal } from './components/HowItWorksModal';
 import { DailyCheckInModal } from './components/DailyCheckInModal';
 import { RedeemCodeModal } from './components/RedeemCodeModal';
 import { ReferralModal } from './components/ReferralModal';
-import { Play, Gift, Sparkles, Flame, Check, Users } from 'lucide-react';
+import { DatabaseStatusModal } from './components/DatabaseStatusModal';
+import { Play, Gift, Sparkles, Flame, Check, Users, Database } from 'lucide-react';
 
 function MainApp() {
   const { userProfile, openAuthModal } = useAuth();
@@ -23,6 +24,7 @@ function MainApp() {
   const [dailyCheckInOpen, setDailyCheckInOpen] = useState(false);
   const [redeemModalOpen, setRedeemModalOpen] = useState(false);
   const [referralModalOpen, setReferralModalOpen] = useState(false);
+  const [databaseStatusOpen, setDatabaseStatusOpen] = useState(false);
 
   // Capture referral parameter from URL on visit (?ref=USER_ID)
   useEffect(() => {
@@ -66,6 +68,7 @@ function MainApp() {
         onOpenDailyCheckIn={() => setDailyCheckInOpen(true)}
         onOpenRedeemModal={() => setRedeemModalOpen(true)}
         onOpenReferralModal={() => setReferralModalOpen(true)}
+        onOpenDatabaseStatus={() => setDatabaseStatusOpen(true)}
       />
 
       {/* Floating Welcome Notice for guests */}
@@ -114,6 +117,7 @@ function MainApp() {
             onOpenDailyCheckIn={() => setDailyCheckInOpen(true)}
             onOpenRedeemModal={() => setRedeemModalOpen(true)}
             onOpenReferralModal={() => setReferralModalOpen(true)}
+            onGoToCreate={() => setCurrentTab('create')}
           />
         )}
         {currentTab === 'create' && (
@@ -145,17 +149,26 @@ function MainApp() {
             <span>• ইউটিউব ভিডিও ভিউ প্ল্যাটফর্ম</span>
           </div>
 
-          <div className="flex items-center gap-4 text-[11px]">
+          <div className="flex items-center gap-4 text-[11px] flex-wrap justify-center sm:justify-start">
             <button
               onClick={() => setHowItWorksOpen(true)}
-              className="hover:text-white transition-colors"
+              className="hover:text-white transition-colors cursor-pointer"
             >
               নিয়মাবলী (Rules)
             </button>
             <span>•</span>
-            <span className="text-emerald-400 font-semibold flex items-center gap-1">
-              Firebase Firestore & Auth সক্রিয়
-            </span>
+            <button
+              onClick={() => setDatabaseStatusOpen(true)}
+              className="text-emerald-400 font-bold hover:text-emerald-300 transition-colors flex items-center gap-1.5 cursor-pointer group"
+              title="শক্তিশালী ক্লাউড ডাটাবেস স্ট্যাটাস ও পিং চেক করুন"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+              </span>
+              <Database className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
+              <span>Google Cloud Firestore লাইভ ডাটাবেস</span>
+            </button>
             <span>•</span>
             <span className="text-amber-400 font-medium">১ সেকেন্ড ভিডিও ভিউ = ১ ক্রেডিট</span>
             <span>•</span>
@@ -170,6 +183,10 @@ function MainApp() {
 
       {/* Modals */}
       <AuthModal />
+      <DatabaseStatusModal
+        isOpen={databaseStatusOpen}
+        onClose={() => setDatabaseStatusOpen(false)}
+      />
       <HowItWorksModal
         isOpen={howItWorksOpen}
         onClose={() => setHowItWorksOpen(false)}

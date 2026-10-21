@@ -235,15 +235,15 @@ export const CreateCampaignView: React.FC<CreateCampaignProps> = ({
           </div>
         )}
 
-        {/* 2. Free-form Custom Seconds Input */}
-        <div className="space-y-2">
+        {/* 2. Free-form Custom Seconds Input + Quick Presets */}
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-xs sm:text-sm font-bold text-slate-200 flex items-center gap-2">
               <Clock className="w-4 h-4 text-amber-400" />
               <span>ইচ্ছামতো সময় (সেকেন্ড)</span>
             </label>
-            <span className="text-xs text-amber-300 font-semibold bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-lg">
-              ১ সেকেন্ড = ১ ক্রেডিট/ভিউ
+            <span className="text-xs text-amber-300 font-semibold bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-lg font-mono">
+              ১ সে. = ১ ক্রেডিট/ভিউ
             </span>
           </div>
 
@@ -251,7 +251,7 @@ export const CreateCampaignView: React.FC<CreateCampaignProps> = ({
             <button
               type="button"
               onClick={() => adjustSeconds(-10)}
-              className="w-12 h-12 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center shrink-0 border border-slate-700 active:scale-95 transition-all"
+              className="w-12 h-12 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center shrink-0 border border-slate-700 active:scale-95 transition-all cursor-pointer"
               title="-১০ সেকেন্ড"
             >
               <Minus className="w-5 h-5" />
@@ -264,8 +264,8 @@ export const CreateCampaignView: React.FC<CreateCampaignProps> = ({
                 max="7200"
                 value={targetSeconds}
                 onChange={(e) => setTargetSeconds(e.target.value)}
-                placeholder="যেমন: ৩০, ৪৫, ৯০, ১৮০, ২৫০..."
-                className="w-full bg-slate-950/80 border border-slate-700/80 rounded-2xl px-4 py-3 text-base sm:text-lg font-mono font-bold text-white placeholder-slate-500 text-center focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all"
+                placeholder="যেমন: ৩০, ৪৫, ৬০, ৯০, ১৮০..."
+                className="w-full bg-slate-950/80 border border-slate-700/80 rounded-2xl px-4 py-3.5 text-base sm:text-lg font-mono font-bold text-white placeholder-slate-500 text-center focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all shadow-inner"
               />
               <span className="absolute right-4 top-3.5 text-xs text-slate-400 font-medium pointer-events-none">
                 সেকেন্ড
@@ -275,19 +275,38 @@ export const CreateCampaignView: React.FC<CreateCampaignProps> = ({
             <button
               type="button"
               onClick={() => adjustSeconds(10)}
-              className="w-12 h-12 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center shrink-0 border border-slate-700 active:scale-95 transition-all"
+              className="w-12 h-12 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center shrink-0 border border-slate-700 active:scale-95 transition-all cursor-pointer"
               title="+১০ সেকেন্ড"
             >
               <Plus className="w-5 h-5" />
             </button>
           </div>
+
+          {/* Quick Duration Preset Chips */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            <span className="text-[11px] text-slate-500 font-medium mr-1">কুইক পছন্দ:</span>
+            {[30, 45, 60, 90, 120, 180, 300].map((sec) => (
+              <button
+                key={sec}
+                type="button"
+                onClick={() => setTargetSeconds(sec)}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  numSeconds === sec
+                    ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md shadow-red-600/30'
+                    : 'bg-slate-950/80 text-slate-300 hover:bg-slate-800 border border-slate-800'
+                }`}
+              >
+                {sec}s
+              </button>
+            ))}
+          </div>
           <p className="text-[11px] text-slate-400">
-            যেকোনো সংখ্যা লিখুন। প্রতি সেকেন্ড দেখার জন্য ভিউয়ার ১ ক্রেডিট পাবে।
+            যেকোনো সংখ্যা লিখুন অথবা উপরের কুইক বাটনে চাপুন। প্রতি সেকেন্ডে ভিউয়ার ১ ক্রেডিট পাবে।
           </p>
         </div>
 
-        {/* 3. Free-form Custom Views Input */}
-        <div className="space-y-2">
+        {/* 3. Free-form Custom Views Input + Quick Presets */}
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
             <label className="text-xs sm:text-sm font-bold text-slate-200 flex items-center gap-2">
               <Eye className="w-4 h-4 text-rose-400" />
@@ -302,7 +321,7 @@ export const CreateCampaignView: React.FC<CreateCampaignProps> = ({
             <button
               type="button"
               onClick={() => adjustViews(-5)}
-              className="w-12 h-12 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center shrink-0 border border-slate-700 active:scale-95 transition-all"
+              className="w-12 h-12 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center shrink-0 border border-slate-700 active:scale-95 transition-all cursor-pointer"
               title="-৫ ভিউ"
             >
               <Minus className="w-5 h-5" />
@@ -315,8 +334,8 @@ export const CreateCampaignView: React.FC<CreateCampaignProps> = ({
                 max="50000"
                 value={targetViews}
                 onChange={(e) => setTargetViews(e.target.value)}
-                placeholder="যেমন: ৫, ১২, ৫০, ১৫০, ১০০০..."
-                className="w-full bg-slate-950/80 border border-slate-700/80 rounded-2xl px-4 py-3 text-base sm:text-lg font-mono font-bold text-white placeholder-slate-500 text-center focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all"
+                placeholder="যেমন: ৫, ১০, ২০, ৫০, ১০০..."
+                className="w-full bg-slate-950/80 border border-slate-700/80 rounded-2xl px-4 py-3.5 text-base sm:text-lg font-mono font-bold text-white placeholder-slate-500 text-center focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all shadow-inner"
               />
               <span className="absolute right-4 top-3.5 text-xs text-slate-400 font-medium pointer-events-none">
                 টি ভিউ
@@ -326,31 +345,65 @@ export const CreateCampaignView: React.FC<CreateCampaignProps> = ({
             <button
               type="button"
               onClick={() => adjustViews(5)}
-              className="w-12 h-12 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center shrink-0 border border-slate-700 active:scale-95 transition-all"
+              className="w-12 h-12 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center shrink-0 border border-slate-700 active:scale-95 transition-all cursor-pointer"
               title="+৫ ভিউ"
             >
               <Plus className="w-5 h-5" />
             </button>
           </div>
+
+          {/* Quick Views Preset Chips */}
+          <div className="flex flex-wrap items-center gap-1.5 pt-1">
+            <span className="text-[11px] text-slate-500 font-medium mr-1">কুইক পছন্দ:</span>
+            {[5, 10, 20, 50, 100, 200, 500].map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setTargetViews(v)}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  numViews === v
+                    ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md shadow-red-600/30'
+                    : 'bg-slate-950/80 text-slate-300 hover:bg-slate-800 border border-slate-800'
+                }`}
+              >
+                {v} ভিউ
+              </button>
+            ))}
+          </div>
           <p className="text-[11px] text-slate-400">
-            নিখুঁত ভিউ কন্ট্রোল: আপনি যে কয়টি ভিউ (যেমন ১০ ভিউ) নির্ধারণ করবেন, ঠিক ততবারই দেখা হবে। <strong>১০ ভিউ দিলে ১০ বারই হবে, এর বেশি হবে না।</strong>
+            নিখুঁত ভিউ কন্ট্রোল: আপনি যে কয়টি ভিউ (যেমন ১০ ভিউ) নির্ধারণ করবেন, ঠিক ততবারই দেখা হবে। <strong>নির্ধারিত ভিউ সম্পন্ন হওয়ামাত্রই প্রচার তালিকা থেকে প্রত্যাহার হবে এবং আর প্রকাশিত হবে না।</strong>
           </p>
         </div>
 
-        {/* 4. Live Calculation Card */}
-        <div className="p-5 rounded-2xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-slate-800/90 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <span className="text-[11px] uppercase tracking-wider text-slate-400 font-bold">খরচ হিসাব</span>
-            <div className="text-xs sm:text-sm text-slate-300 font-medium">
-              <span className="text-white font-bold">{numSeconds}</span> সেকেন্ড × <span className="text-white font-bold">{numViews}</span> ভিউ
+        {/* 4. Live Dynamic Calculation Card */}
+        <div className="p-5 rounded-2xl bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 border border-slate-800/90 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="space-y-1.5">
+            <span className="text-[11px] uppercase tracking-wider text-slate-400 font-bold flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+              লাইভ খরচ হিসাব
+            </span>
+            <div className="text-sm sm:text-base text-slate-200 font-medium">
+              <span className="text-white font-bold font-mono">{numSeconds}</span> সেকেন্ড × <span className="text-white font-bold font-mono">{numViews}</span> ভিউ
             </div>
-            <p className="text-[11px] text-slate-500">আপনার বর্তমান ব্যালেন্স: {currentBalance.toLocaleString()} ক্রেডিট</p>
+            <div className="flex items-center gap-2 text-[11px]">
+              <span className="text-slate-400">আপনার বর্তমান ব্যালেন্স:</span>
+              <span className="font-bold text-emerald-400 font-mono">{currentBalance.toLocaleString()} ক্রেডিট</span>
+              {isVideoCostAffordable ? (
+                <span className="text-[10px] bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2 py-0.5 rounded-md font-bold">
+                  ✓ পর্যাপ্ত ব্যালেন্স আছে
+                </span>
+              ) : (
+                <span className="text-[10px] bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-md font-bold">
+                  ! আরও ক্রেডিট প্রয়োজন
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center gap-3 self-end sm:self-center">
             <div className="text-right">
               <span className="text-[10px] uppercase font-bold text-slate-400">মোট ক্রেডিট লাগবে</span>
-              <div className="text-2xl sm:text-3xl font-black text-amber-400 flex items-center justify-end gap-1.5 font-mono">
+              <div className="text-2xl sm:text-3xl font-black text-amber-400 flex items-center justify-end gap-1.5 font-mono tracking-tight">
                 <Coins className="w-6 h-6 text-amber-400" />
                 <span>{totalVideoCost.toLocaleString()}</span>
               </div>
