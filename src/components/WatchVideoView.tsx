@@ -387,38 +387,6 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
     }
   };
 
-  // Helper to seed initial sample videos
-  const handleSeedCampaigns = async () => {
-    if (!userProfile) {
-      openAuthModal();
-      return;
-    }
-    setLoading(true);
-    try {
-      const now = new Date().toISOString();
-      for (const item of INITIAL_SEED_VIDEOS) {
-        const id = `camp_${item.videoId}_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-        const campRef = doc(db, 'videoCampaigns', id);
-        const newCamp: VideoCampaign = {
-          ...item,
-          id,
-          userId: userProfile.uid,
-          creatorEmail: userProfile.email,
-          completedViews: 0,
-          status: 'active',
-          createdAt: now,
-          updatedAt: now,
-        };
-        await setDoc(campRef, newCamp);
-      }
-      confetti({ particleCount: 80, spread: 70 });
-    } catch (err) {
-      console.warn('Notice seeding sample videos:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   // Filtered campaigns (Guaranteed: strictly exclude any completed video)
   const filteredCampaigns = campaigns.filter((c) => {
     if (c.status !== 'active' || (Number(c.completedViews) || 0) >= Number(c.targetViews)) return false;
@@ -813,15 +781,6 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                     <span>নতুন ভিডিও ক্যাম্পেইন তৈরি করুন</span>
                   </button>
                 )}
-                {campaigns.length === 0 && (
-                  <button
-                    onClick={handleSeedCampaigns}
-                    className="inline-flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs py-3 px-5 rounded-2xl border border-slate-700 cursor-pointer"
-                  >
-                    <RefreshCw className="w-4 h-4" />
-                    <span>ডেমো ভিডিও লোড করুন</span>
-                  </button>
-                )}
               </div>
             </div>
           )}
@@ -834,16 +793,6 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
               <Eye className="w-4 h-4 text-red-500" />
               <span>ভিডিও কিউ ({filteredCampaigns.length})</span>
             </h3>
-
-            {campaigns.length === 0 && (
-              <button
-                onClick={handleSeedCampaigns}
-                className="text-[11px] text-red-400 hover:text-red-300 font-bold flex items-center gap-1 cursor-pointer bg-red-500/10 px-2.5 py-1 rounded-lg border border-red-500/20"
-              >
-                <RefreshCw className="w-3 h-3" />
-                <span>লোড করুন</span>
-              </button>
-            )}
           </div>
 
           {/* Duration Filter Chips */}
@@ -972,12 +921,6 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                       নতুন ভিডিও যোগ করুন
                     </button>
                   )}
-                  <button
-                    onClick={handleSeedCampaigns}
-                    className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-medium py-2 px-3 rounded-xl cursor-pointer border border-slate-700"
-                  >
-                    ডেমো ভিডিও লোড করুন
-                  </button>
                 </div>
               </div>
             )}

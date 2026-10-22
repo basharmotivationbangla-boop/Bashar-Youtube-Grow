@@ -72,11 +72,11 @@ export const Navbar: React.FC<NavbarProps> = ({
               {/* 3-DOTS MENU BUTTON - Placed directly to the LEFT of the brand */}
               <button
                 onClick={() => setDrawerOpen(true)}
-                className="relative p-2.5 rounded-2xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800/90 hover:border-red-500/50 text-slate-300 hover:text-white transition-all shadow-md group cursor-pointer active:scale-95"
-                title="মেনু খুলুন (ভিডিও ভিউ, ক্যাম্পেইন তৈরি, ড্যাশবোর্ড)"
+                className="flex items-center gap-2 p-2.5 sm:px-3 sm:py-2 rounded-2xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800/90 hover:border-red-500/50 text-slate-300 hover:text-white transition-all shadow-md group cursor-pointer active:scale-95"
+                title="মেনু খুলুন (ভিডিও দেখুন, ক্যাম্পেইন তৈরি, আমার ড্যাশবোর্ড, ক্লাউড ডাটাবেস)"
               >
                 <MoreVertical className="w-5 h-5 text-red-500 group-hover:scale-110 transition-transform" />
-                <span className="sr-only">Menu</span>
+                <span className="text-xs font-bold hidden sm:inline text-slate-300 group-hover:text-white">মেনু</span>
               </button>
 
               {/* Brand Logo & Title (Clean, no open tabs next to it) */}
@@ -99,60 +99,8 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             </div>
 
-            {/* Middle: Desktop Segmented Navigation Tabs */}
-            <nav className="hidden md:flex items-center gap-1 bg-slate-900/90 border border-slate-800/90 p-1 rounded-2xl shadow-inner">
-              <button
-                onClick={() => onSelectTab('watch')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  currentTab === 'watch'
-                    ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md shadow-red-600/30'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span>ভিডিও দেখুন</span>
-              </button>
-
-              <button
-                onClick={() => onSelectTab('create')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  currentTab === 'create'
-                    ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md shadow-red-600/30'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <PlusCircle className="w-3.5 h-3.5" />
-                <span>ক্যাম্পেইন তৈরি</span>
-              </button>
-
-              <button
-                onClick={() => onSelectTab('dashboard')}
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  currentTab === 'dashboard'
-                    ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md shadow-red-600/30'
-                    : 'text-slate-400 hover:text-white hover:bg-slate-800/60'
-                }`}
-              >
-                <LayoutDashboard className="w-3.5 h-3.5" />
-                <span>আমার ড্যাশবোর্ড</span>
-              </button>
-            </nav>
-
             {/* Right Elements: Promo Code + Daily Check-in + Help + Credits + Auth */}
             <div className="flex items-center gap-2 sm:gap-2.5">
-              {/* Powerful Cloud Database Status Indicator & Modal Trigger */}
-              <button
-                onClick={onOpenDatabaseStatus}
-                title="Google Cloud Firestore ডাটাবেস স্ট্যাটাস দেখুন"
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-2xl text-xs font-bold bg-slate-900/90 hover:bg-slate-800 border border-emerald-500/30 hover:border-emerald-500/60 text-emerald-300 hover:text-emerald-200 transition-all shadow-sm cursor-pointer active:scale-95 group"
-              >
-                <Database className="w-3.5 h-3.5 text-emerald-400 group-hover:scale-110 transition-transform" />
-                <span className="hidden xl:inline">ক্লাউড ডাটাবেস</span>
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500 shadow-sm"></span>
-                </span>
-              </button>
 
               {/* Promo Code Quick Redeem Button */}
               <button
@@ -398,7 +346,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   প্রধান মেনু
                 </p>
 
-                {/* 1. ভিডিও ভিউ */}
+                {/* 1. ভিডিও দেখুন */}
                 <button
                   onClick={() => handleSelectNav('watch')}
                   className={`w-full flex items-center justify-between p-3.5 rounded-2xl text-sm font-bold transition-all cursor-pointer ${
@@ -413,7 +361,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     }`}>
                       <Play className="w-4 h-4 fill-current" />
                     </div>
-                    <span>ভিডিও ভিউ (Watch)</span>
+                    <span>ভিডিও দেখুন</span>
                   </div>
                   <ChevronRight className="w-4 h-4 opacity-60" />
                 </button>
@@ -433,7 +381,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     }`}>
                       <PlusCircle className="w-4 h-4" />
                     </div>
-                    <span>ক্যাম্পেইন তৈরি (Add)</span>
+                    <span>ক্যাম্পেইন তৈরি</span>
                   </div>
                   <ChevronRight className="w-4 h-4 opacity-60" />
                 </button>
@@ -458,7 +406,30 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <ChevronRight className="w-4 h-4 opacity-60" />
                 </button>
 
-                {/* 4. দৈনিক চেক-ইন বোনাস */}
+                {/* 4. ক্লাউড ডাটাবেস */}
+                <button
+                  onClick={() => {
+                    setDrawerOpen(false);
+                    onOpenDatabaseStatus?.();
+                  }}
+                  className="w-full flex items-center justify-between p-3.5 rounded-2xl text-sm font-bold bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 hover:text-emerald-200 border border-emerald-500/30 transition-all cursor-pointer shadow-sm"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-emerald-500/15 text-emerald-400">
+                      <Database className="w-4 h-4 text-emerald-400" />
+                    </div>
+                    <span>ক্লাউড ডাটাবেস</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                      লাইভ
+                    </span>
+                    <ChevronRight className="w-4 h-4 opacity-60" />
+                  </div>
+                </button>
+
+                {/* 5. দৈনিক চেক-ইন বোনাস */}
                 <button
                   onClick={() => {
                     setDrawerOpen(false);
@@ -495,7 +466,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <ChevronRight className="w-4 h-4 opacity-60" />
                 </button>
 
-
                 {/* 6. প্রমো কোড রিডিম */}
                 <button
                   onClick={() => {
@@ -509,24 +479,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <span>প্রমো কোড রিডিম করুন</span>
                   </div>
                   <ChevronRight className="w-3.5 h-3.5 opacity-60" />
-                </button>
-
-                {/* 7. শক্তিশালী ক্লাউড ডাটাবেস */}
-                <button
-                  onClick={() => {
-                    setDrawerOpen(false);
-                    onOpenDatabaseStatus?.();
-                  }}
-                  className="w-full flex items-center justify-between p-3 rounded-2xl text-xs font-semibold bg-emerald-950/30 hover:bg-emerald-900/40 text-emerald-300 hover:text-emerald-200 border border-emerald-500/30 transition-all cursor-pointer"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <Database className="w-4 h-4 text-emerald-400" />
-                    <span>শক্তিশালী ক্লাউড ডাটাবেস</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/20 px-2 py-0.5 rounded-full">লাইভ</span>
-                    <ChevronRight className="w-3.5 h-3.5 opacity-60" />
-                  </div>
                 </button>
 
                 {/* Special Video Delete / Management shortcut */}
