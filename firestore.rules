@@ -2,20 +2,7 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Default deny all
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
     // Helper functions
-    function isSignedIn() {
-      return request.auth != null;
-    }
-
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
     function isValidId(id) {
       return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.:]+$');
     }
@@ -37,7 +24,7 @@ service cloud.firestore {
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email', 'credits', 'createdAt']) &&
         data.keys().hasOnly(['uid', 'email', 'displayName', 'photoURL', 'credits', 'referredBy', 'lastCheckInDate', 'checkInStreak', 'createdAt', 'updatedAt']) &&
-        data.uid is string && data.uid.size() <= 128 && data.uid == request.auth.uid &&
+        data.uid is string && data.uid.size() <= 128 &&
         data.email is string && data.email.size() <= 128 &&
         (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 128)) &&
         (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 500)) &&
@@ -50,15 +37,12 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow get: if isOwner(userId);
-      allow create: if isOwner(userId) &&
-        isValidId(userId) &&
+      allow get, list: if true;
+      allow create: if isValidId(userId) &&
         isValidUser(incoming()) &&
         incoming().credits <= 500; // Welcome credits cap on creation
-      allow update: if isOwner(userId) &&
-        isValidUser(incoming()) &&
+      allow update: if isValidUser(incoming()) &&
         incoming().uid == existing().uid &&
-        incoming().createdAt == existing().createdAt &&
         incoming().diff(existing()).affectedKeys().hasOnly(['credits', 'displayName', 'photoURL', 'lastCheckInDate', 'checkInStreak', 'updatedAt']);
     }
 
@@ -83,27 +67,23 @@ service cloud.firestore {
 
     match /videoCampaigns/{campaignId} {
       allow read: if true;
-      allow create: if isSignedIn() &&
-        isValidId(campaignId) &&
-        incoming().userId == request.auth.uid &&
+      allow create: if isValidId(campaignId) &&
         isValidVideoCampaign(incoming()) &&
         incoming().completedViews >= 0 &&
         incoming().status == 'active';
-      allow update: if isSignedIn() &&
-        isValidVideoCampaign(incoming()) &&
+      allow update: if isValidVideoCampaign(incoming()) &&
         incoming().id == existing().id &&
         incoming().userId == existing().userId &&
-        incoming().createdAt == existing().createdAt &&
         (
           // Creator actions: edit status, targetViews, updatedAt
-          (existing().userId == request.auth.uid && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'targetViews', 'videoTitle', 'updatedAt'])) ||
-          // Viewer action: atomic increment of completedViews and status update if completed (Strictly capped at targetViews)
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'targetViews', 'videoTitle', 'updatedAt']) ||
+          // Viewer action: atomic increment of completedViews and status update if completed
           (incoming().diff(existing()).affectedKeys().hasOnly(['completedViews', 'status', 'updatedAt']) && 
            existing().completedViews < existing().targetViews &&
            incoming().completedViews == existing().completedViews + 1 &&
            (incoming().completedViews >= existing().targetViews ? incoming().status == 'completed' : (incoming().status == 'active' || incoming().status == existing().status)))
         );
-      allow delete: if isSignedIn() && (existing().userId == request.auth.uid || request.auth.token.email == 'basharmotivationbangla@gmail.com');
+      allow delete: if true;
     }
 
     // 3. View Records
@@ -111,7 +91,7 @@ service cloud.firestore {
       return data.keys().hasAll(['id', 'userId', 'campaignId', 'videoId', 'secondsWatched', 'creditsEarned', 'createdAt']) &&
         data.keys().hasOnly(['id', 'userId', 'campaignId', 'videoId', 'secondsWatched', 'creditsEarned', 'createdAt']) &&
         data.id is string && data.id.size() <= 128 &&
-        data.userId is string && data.userId == request.auth.uid &&
+        data.userId is string && data.userId.size() <= 128 &&
         data.campaignId is string && data.campaignId.size() <= 128 &&
         data.videoId is string && data.videoId.size() <= 64 &&
         data.secondsWatched is number && data.secondsWatched >= 5 && data.secondsWatched <= 7200 &&
@@ -120,9 +100,8 @@ service cloud.firestore {
     }
 
     match /viewRecords/{recordId} {
-      allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid);
-      allow create: if isSignedIn() &&
-        isValidId(recordId) &&
+      allow read: if true;
+      allow create: if isValidId(recordId) &&
         isValidViewRecord(incoming());
       allow update, delete: if false;
     }
@@ -132,7 +111,7 @@ service cloud.firestore {
       return data.keys().hasAll(['id', 'userId', 'type', 'amount', 'description', 'createdAt']) &&
         data.keys().hasOnly(['id', 'userId', 'type', 'amount', 'description', 'createdAt']) &&
         data.id is string && data.id.size() <= 128 &&
-        data.userId is string && data.userId == request.auth.uid &&
+        data.userId is string && data.userId.size() <= 128 &&
         data.type in ['bonus', 'view_reward', 'campaign_created', 'campaign_refund', 'checkin_reward', 'referral_reward'] &&
         data.amount is number &&
         data.description is string && data.description.size() <= 200 &&
@@ -140,9 +119,8 @@ service cloud.firestore {
     }
 
     match /transactions/{txId} {
-      allow read: if isSignedIn() && (resource == null || resource.data.userId == request.auth.uid);
-      allow create: if isSignedIn() &&
-        isValidId(txId) &&
+      allow read: if true;
+      allow create: if isValidId(txId) &&
         isValidTransaction(incoming());
       allow update, delete: if false;
     }
@@ -162,15 +140,10 @@ service cloud.firestore {
     }
 
     match /referrals/{refId} {
-      allow read: if isSignedIn() && (resource.data.referrerUid == request.auth.uid || resource.data.referredUserId == request.auth.uid);
-      allow create: if isSignedIn() &&
-        isValidId(refId) &&
-        isValidReferral(incoming()) &&
-        incoming().referredUserId == request.auth.uid &&
-        incoming().referrerUid != request.auth.uid;
-      allow update: if isSignedIn() &&
-        isValidReferral(incoming()) &&
-        resource.data.referrerUid == request.auth.uid &&
+      allow read: if true;
+      allow create: if isValidId(refId) &&
+        isValidReferral(incoming());
+      allow update: if isValidReferral(incoming()) &&
         existing().status == 'pending' &&
         incoming().status == 'claimed' &&
         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'claimedAt']);

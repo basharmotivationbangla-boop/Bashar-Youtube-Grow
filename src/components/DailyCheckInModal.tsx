@@ -143,7 +143,7 @@ export const DailyCheckInModal: React.FC<DailyCheckInModalProps> = ({ isOpen, on
               </div>
               <div>
                 <h3 className="font-black text-lg sm:text-xl tracking-tight">দৈনিক চেক-ইন বোনাস</h3>
-                <p className="text-xs text-white/90">প্রতিদিন লগইন করে ফ্রিতে বাড়তি ক্রেডিট সংগ্রহ করুন</p>
+                <p className="text-xs text-white/90">প্রতিদিন অ্যাপে এসে ফ্রিতে বাড়তি ক্রেডিট সংগ্রহ করুন</p>
               </div>
             </div>
             <button
@@ -173,7 +173,7 @@ export const DailyCheckInModal: React.FC<DailyCheckInModalProps> = ({ isOpen, on
           <div>
             <div className="flex items-center justify-between mb-3 text-xs">
               <span className="font-bold text-slate-300">৭ দিনের পুরস্কার ক্যালেন্ডার</span>
-              <span className="text-slate-400">প্রতিদিন লগইন করলে বেশি ক্রেডিট</span>
+              <span className="text-slate-400">প্রতিদিন প্রবেশ করলে বেশি ক্রেডিট</span>
             </div>
 
             <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
@@ -237,7 +237,7 @@ export const DailyCheckInModal: React.FC<DailyCheckInModalProps> = ({ isOpen, on
                   <span>আজকের {todayReward.credits} ক্রেডিট বোনাস নেওয়া হয়েছে!</span>
                 </div>
                 <p className="text-xs text-slate-400">
-                  পরবর্তী বোনাস আগামীকাল আনলক হবে। স্ট্রিক ধরে রাখতে প্রতিদিন লগইন করুন!
+                  পরবর্তী বোনাস আগামীকাল আনলক হবে। স্ট্রিক ধরে রাখতে প্রতিদিন অ্যাপে প্রবেশ করুন!
                 </p>
               </div>
             ) : (

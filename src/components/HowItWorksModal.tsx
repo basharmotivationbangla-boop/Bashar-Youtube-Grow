@@ -41,9 +41,9 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({ isOpen, onClos
           <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 shadow-sm">
             <Gift className="w-6 h-6 text-amber-400 shrink-0 mt-0.5" />
             <div>
-              <h4 className="text-sm font-bold text-amber-300">১. ৫০০ ক্রেডিট ফ্রি সাইন আপ বোনাস</h4>
+              <h4 className="text-sm font-bold text-amber-300">১. ৫০০ ক্রেডিট ফ্রি ওয়েলকাম বোনাস</h4>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                নতুন অ্যাকাউন্ট সাইন আপ বা লগইন করার সাথে সাথেই সরাসরি <strong>{WELCOME_CREDITS} ক্রেডিট</strong> সম্পূর্ণ বিনামূল্যে ওয়েলকাম বোনাস হিসেবে পেয়ে যাবেন।
+                Google একাউন্ট দিয়ে প্রথমবার যুক্ত হওয়ার সাথে সাথেই সরাসরি <strong>{WELCOME_CREDITS} ক্রেডিট</strong> সম্পূর্ণ বিনামূল্যে ওয়েলকাম বোনাস হিসেবে পেয়ে যাবেন।
               </p>
             </div>
           </div>
@@ -81,7 +81,7 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({ isOpen, onClos
             <div>
               <h4 className="text-sm font-bold text-purple-300">৪. দৈনিক চেক-ইন বোনাস (Daily Check-in)</h4>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                প্রতিদিন অ্যাপে লগইন করলেই পাচ্ছেন ফ্রি বোনাস পয়েন্ট! ১ম দিনে ২০ ক্রেডিট থেকে শুরু করে ৭ম দিনে পাবেন মেগা ১০০ ক্রেডিট বোনাস।
+                প্রতিদিন অ্যাপে আসলেই পাচ্ছেন ফ্রি বোনাস পয়েন্ট! ১ম দিনে ২০ ক্রেডিট থেকে শুরু করে ৭ম দিনে পাবেন মেগা ১০০ ক্রেডিট বোনাস।
               </p>
             </div>
           </div>

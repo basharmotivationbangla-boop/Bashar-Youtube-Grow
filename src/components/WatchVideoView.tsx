@@ -544,7 +544,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
           <div className="flex items-center justify-between mt-3 text-[11px] relative z-10">
             <span className="text-slate-400 flex items-center gap-1">
               <Flame className="w-3.5 h-3.5 text-amber-400" />
-              <span>{userProfile ? `স্ট্রিক: ${userProfile.checkInStreak || 1} দিন` : 'লগইন করলেই ৫০০ পয়েন্ট ফ্রি'}</span>
+              <span>{userProfile ? `স্ট্রিক: ${userProfile.checkInStreak || 1} দিন` : 'Google দিয়ে যুক্ত হলেই ৫০০ পয়েন্ট ফ্রি'}</span>
             </span>
             {userProfile && !isClaimedToday ? (
               <button
