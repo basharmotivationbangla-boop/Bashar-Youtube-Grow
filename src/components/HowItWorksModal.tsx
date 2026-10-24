@@ -48,18 +48,18 @@ export const HowItWorksModal: React.FC<HowItWorksModalProps> = ({ isOpen, onClos
             </div>
           </div>
 
-          {/* Rule 2: Firebase Firestore & Authentication */}
+          {/* Rule 2: Instant Realtime Sync & Points Security */}
           <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 shadow-sm">
             <ShieldCheck className="w-6 h-6 text-amber-400 shrink-0 mt-0.5" />
             <div>
               <div className="flex items-center gap-2">
-                <h4 className="text-sm font-bold text-amber-300">২. Firebase Firestore & Auth ডেটাবেস</h4>
+                <h4 className="text-sm font-bold text-amber-300">২. তাৎক্ষণিক ব্যালেন্স সিঙ্ক ও নিরাপত্তা</h4>
                 <span className="text-[10px] bg-amber-400 text-slate-950 font-black px-2 py-0.5 rounded-full">
                   রিয়েল-টাইম
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                আপনার সমস্ত পয়েন্ট, ভিডিও প্রচার এবং দেখার রেকর্ড সরাসরি Google Firebase Firestore ডেটাবেসে তাৎক্ষণিকভাবে সিঙ্ক ও সংরক্ষিত থাকে।
+                আপনার অর্জিত সমস্ত ক্রেডিট পয়েন্ট, ক্যাম্পেইন এবং দেখার ইতিহাস প্রতিটি সেকেন্ডে সরাসরি এবং নিরাপদে স্বয়ংক্রিয়ভাবে সংরক্ষিত হয়।
               </p>
             </div>
           </div>

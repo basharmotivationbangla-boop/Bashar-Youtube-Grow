@@ -49,3 +49,55 @@ export function formatSecondsToTime(seconds: number): string {
   if (secs === 0) return `${mins} মিনিট`;
   return `${mins} মি. ${secs} সে.`;
 }
+
+// In-memory cache for fetched YouTube video titles
+const titleCache = new Map<string, string>();
+
+/**
+ * Fetch the real YouTube video title via YouTube oEmbed API or NoEmbed fallback
+ */
+export async function fetchYouTubeVideoTitle(videoId: string): Promise<string> {
+  if (!videoId) return '';
+  if (titleCache.has(videoId)) {
+    return titleCache.get(videoId)!;
+  }
+
+  const cleanUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+  // 1. Try official YouTube oEmbed endpoint (public & CORS supported)
+  try {
+    const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(cleanUrl)}&format=json`;
+    const res = await fetch(oembedUrl);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && typeof data.title === 'string' && data.title.trim().length > 0) {
+        const cleanTitle = data.title.trim().slice(0, 190);
+        titleCache.set(videoId, cleanTitle);
+        return cleanTitle;
+      }
+    }
+  } catch (err) {
+    console.warn('YouTube oEmbed title fetch failed, trying fallback:', err);
+  }
+
+  // 2. Try noembed fallback
+  try {
+    const noembedUrl = `https://noembed.com/embed?url=${encodeURIComponent(cleanUrl)}`;
+    const res = await fetch(noembedUrl);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && typeof data.title === 'string' && data.title.trim().length > 0) {
+        const cleanTitle = data.title.trim().slice(0, 190);
+        titleCache.set(videoId, cleanTitle);
+        return cleanTitle;
+      }
+    }
+  } catch (err) {
+    console.warn('Noembed title fetch failed:', err);
+  }
+
+  const fallback = `ইউটিউব ভিডিও (${videoId})`;
+  titleCache.set(videoId, fallback);
+  return fallback;
+}
+

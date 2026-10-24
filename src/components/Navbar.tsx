@@ -15,8 +15,7 @@ import {
   Sparkles,
   Users,
   Flame,
-  Key,
-  Database
+  Key
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { logOut } from '../firebase';
@@ -28,7 +27,6 @@ interface NavbarProps {
   onOpenDailyCheckIn: () => void;
   onOpenRedeemModal: () => void;
   onOpenReferralModal?: () => void;
-  onOpenDatabaseStatus?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ 
@@ -37,8 +35,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenHowItWorks,
   onOpenDailyCheckIn,
   onOpenRedeemModal,
-  onOpenReferralModal,
-  onOpenDatabaseStatus
+  onOpenReferralModal
 }) => {
   const { userProfile, openAuthModal } = useAuth();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -73,7 +70,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <button
                 onClick={() => setDrawerOpen(true)}
                 className="flex items-center gap-2 p-2.5 sm:px-3 sm:py-2 rounded-2xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800/90 hover:border-red-500/50 text-slate-300 hover:text-white transition-all shadow-md group cursor-pointer active:scale-95"
-                title="মেনু খুলুন (ভিডিও দেখুন, ক্যাম্পেইন তৈরি, আমার ড্যাশবোর্ড, ক্লাউড ডাটাবেস)"
+                title="মেনু খুলুন (ভিডিও দেখুন, ক্যাম্পেইন তৈরি, আমার ড্যাশবোর্ড)"
               >
                 <MoreVertical className="w-5 h-5 text-red-500 group-hover:scale-110 transition-transform" />
                 <span className="text-xs font-bold hidden sm:inline text-slate-300 group-hover:text-white">মেনু</span>
@@ -406,30 +403,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <ChevronRight className="w-4 h-4 opacity-60" />
                 </button>
 
-                {/* 4. ক্লাউড ডাটাবেস */}
-                <button
-                  onClick={() => {
-                    setDrawerOpen(false);
-                    onOpenDatabaseStatus?.();
-                  }}
-                  className="w-full flex items-center justify-between p-3.5 rounded-2xl text-sm font-bold bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 hover:text-emerald-200 border border-emerald-500/30 transition-all cursor-pointer shadow-sm"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-xl flex items-center justify-center bg-emerald-500/15 text-emerald-400">
-                      <Database className="w-4 h-4 text-emerald-400" />
-                    </div>
-                    <span>ক্লাউড ডাটাবেস</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/20 px-2 py-0.5 rounded-full flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-                      লাইভ
-                    </span>
-                    <ChevronRight className="w-4 h-4 opacity-60" />
-                  </div>
-                </button>
-
-                {/* 5. দৈনিক চেক-ইন বোনাস */}
+                {/* 4. দৈনিক চেক-ইন বোনাস */}
                 <button
                   onClick={() => {
                     setDrawerOpen(false);
@@ -526,18 +500,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span>Google দিয়ে শুরু করুন (+৫০০ ক্রেডিট)</span>
                 </button>
               )}
-
-              {/* Firebase Firestore & Auth Status Badge */}
-              <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-900/80 rounded-2xl border border-slate-800 text-[11px]">
-                <span className="flex items-center gap-1.5 text-amber-400 font-semibold">
-                  <Flame className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                  Firebase Firestore & Auth
-                </span>
-                <span className="text-emerald-400 font-bold flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  সক্রিয়
-                </span>
-              </div>
 
               <button
                 onClick={() => {

@@ -36,7 +36,7 @@ export interface UserProfile {
   updatedAt?: string;
 }
 
-export type CampaignStatus = 'active' | 'paused' | 'completed';
+export type CampaignStatus = 'active' | 'paused' | 'completed' | 'deleted';
 
 export interface VideoCampaign {
   id: string;

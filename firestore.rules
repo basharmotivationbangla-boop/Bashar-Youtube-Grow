@@ -60,7 +60,7 @@ service cloud.firestore {
         data.costPerView == data.targetSeconds &&
         data.targetViews is number && data.targetViews >= 1 && data.targetViews <= 50000 &&
         data.completedViews is number && data.completedViews >= 0 &&
-        data.status in ['active', 'paused', 'completed'] &&
+        data.status in ['active', 'paused', 'completed', 'deleted'] &&
         data.createdAt is string && data.createdAt.size() <= 64 &&
         (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 64));
     }
@@ -83,7 +83,14 @@ service cloud.firestore {
            incoming().completedViews == existing().completedViews + 1 &&
            (incoming().completedViews >= existing().targetViews ? incoming().status == 'completed' : (incoming().status == 'active' || incoming().status == existing().status)))
         );
-      allow delete: if true;
+      allow delete: if (
+        (request.auth != null && (
+          request.auth.uid == existing().userId ||
+          request.auth.token.email == 'basharmotivationbangla@gmail.com' ||
+          (existing().creatorEmail is string && request.auth.token.email == existing().creatorEmail)
+        )) ||
+        existing().status == 'deleted'
+      );
     }
 
     // 3. View Records

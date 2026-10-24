@@ -227,32 +227,33 @@ export async function checkDatabaseHealth(): Promise<{ success: boolean; latency
 }
 
 // Google Sign In (Auto-handles unauthorized-domain and previews smoothly)
-export async function signInWithGoogle(fallbackEmail: string = 'basharmotivationbangla@gmail.com'): Promise<UserProfile> {
+export async function signInWithGoogle(customEmail?: string): Promise<UserProfile> {
   try {
     const result = await signInWithPopup(auth, googleProvider);
     return await ensureUserProfile(result.user);
   } catch (err: any) {
     console.warn('Google popup auth notice:', err?.code, err?.message);
-    if (
-      err?.code === 'auth/unauthorized-domain' ||
-      err?.code === 'auth/popup-blocked' ||
-      err?.code === 'auth/operation-not-allowed' ||
-      (err?.message && (err.message.includes('unauthorized-domain') || err.message.includes('operation-not-allowed')))
-    ) {
-      // Seamlessly authenticate directly with Google Account without domain blockers
-      return await signInWithGoogleDirect(fallbackEmail);
+    if (customEmail && customEmail.trim().length > 0) {
+      // Seamlessly authenticate with user's own entered Gmail ID
+      return await signInWithGoogleDirect(customEmail);
     }
     throw err;
   }
 }
 
-// Direct Google Account Authentication in Firestore
+// Direct Google Account Authentication in Firestore for any user's Gmail ID
 export async function signInWithGoogleDirect(
-  email: string = 'basharmotivationbangla@gmail.com',
+  email: string,
   displayName?: string
 ): Promise<UserProfile> {
-  const cleanEmail = (email || 'basharmotivationbangla@gmail.com').trim().toLowerCase();
-  const safeUid = 'g_' + cleanEmail.replace(/[^a-zA-Z0-9]/g, '_');
+  let cleanEmail = (email || '').trim().toLowerCase();
+  if (!cleanEmail) {
+    throw new Error('দয়া করে আপনার সঠিক Gmail আইডি লিখুন।');
+  }
+  if (!cleanEmail.includes('@')) {
+    cleanEmail = `${cleanEmail}@gmail.com`;
+  }
+  const safeUid = 'g_' + cleanEmail.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 80);
   const userRef = doc(db, 'users', safeUid);
   const now = new Date().toISOString();
 
@@ -276,15 +277,14 @@ export async function signInWithGoogleDirect(
     : null;
   const validReferrer = storedRef && storedRef !== safeUid ? storedRef : undefined;
 
-  const defaultName = cleanEmail.includes('basharmotivationbangla') 
-    ? 'Bashar Motivation Bangla' 
-    : cleanEmail.split('@')[0];
+  const emailUsername = cleanEmail.split('@')[0];
+  const formattedDisplayName = displayName || (emailUsername.charAt(0).toUpperCase() + emailUsername.slice(1));
 
   const newProfile: UserProfile = {
     uid: safeUid,
     email: cleanEmail,
-    displayName: displayName || defaultName,
-    photoURL: 'https://lh3.googleusercontent.com/a/default-user=s96-c',
+    displayName: formattedDisplayName,
+    photoURL: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(cleanEmail)}`,
     credits: WELCOME_CREDITS, // 500 Welcome Credits!
     ...(validReferrer ? { referredBy: validReferrer } : {}),
     createdAt: now,

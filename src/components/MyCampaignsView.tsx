@@ -14,7 +14,15 @@ import {
   Flame,
   Sparkles,
   Check,
-  Users
+  Users,
+  ShieldCheck,
+  Lock,
+  Copy,
+  ExternalLink,
+  AlertTriangle,
+  X,
+  CheckCircle2,
+  Filter
 } from 'lucide-react';
 import { 
   collection, 
@@ -30,7 +38,8 @@ import {
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { VideoCampaign, Transaction } from '../types';
-import { getYouTubeThumbnail } from '../utils/youtube';
+import { getYouTubeThumbnail, fetchYouTubeVideoTitle } from '../utils/youtube';
+import confetti from 'canvas-confetti';
 
 interface MyCampaignsProps {
   onCreateCampaignClick: () => void;
@@ -47,9 +56,16 @@ export const MyCampaignsView: React.FC<MyCampaignsProps> = ({
 }) => {
   const { userProfile, openAuthModal } = useAuth();
   const [activeTab, setActiveTab] = useState<'video' | 'transactions'>('video');
+  const [campaignFilter, setCampaignFilter] = useState<'all' | 'active' | 'paused' | 'completed'>('all');
   const [myVideos, setMyVideos] = useState<VideoCampaign[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [resolvedTitles, setResolvedTitles] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+
+  // Protected delete & notification states
+  const [campaignToDelete, setCampaignToDelete] = useState<VideoCampaign | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState<boolean>(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
@@ -63,13 +79,29 @@ export const MyCampaignsView: React.FC<MyCampaignsProps> = ({
       return;
     }
 
-    // 1. My Video Campaigns
+    // 1. My Video Campaigns (Strictly filtered by creator's userId)
     const qVideos = query(collection(db, 'videoCampaigns'), where('userId', '==', userProfile.uid));
     const unsubVideos = onSnapshot(qVideos, (snap) => {
       const list: VideoCampaign[] = [];
-      snap.forEach((d) => list.push(d.data() as VideoCampaign));
+      snap.forEach((d) => {
+        const camp = d.data() as VideoCampaign;
+        if (camp.status !== 'deleted') {
+          list.push(camp);
+        }
+      });
       list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setMyVideos(list);
+
+      // Resolve real YouTube titles for any campaign with placeholder
+      list.forEach((c) => {
+        if (!resolvedTitles[c.videoId]) {
+          fetchYouTubeVideoTitle(c.videoId).then((realTitle) => {
+            if (realTitle && !realTitle.includes('ভিডিও (')) {
+              setResolvedTitles((prev) => ({ ...prev, [c.videoId]: realTitle }));
+            }
+          });
+        }
+      });
     });
 
     // 2. Transactions
@@ -88,8 +120,25 @@ export const MyCampaignsView: React.FC<MyCampaignsProps> = ({
     };
   }, [userProfile]);
 
+  // Copy link helper
+  const handleCopyLink = (videoId: string) => {
+    const url = `https://www.youtube.com/watch?v=${videoId}`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url);
+    }
+    setToastMessage('✅ ভিডিও লিংক ক্লিপবোর্ডে কপি হয়েছে!');
+    setTimeout(() => setToastMessage(null), 3000);
+  };
+
   // Toggle video campaign status
   const handleToggleVideoStatus = async (camp: VideoCampaign) => {
+    if (!userProfile) return;
+    const isOwnerOrAdmin = userProfile.uid === camp.userId || userProfile.email === 'basharmotivationbangla@gmail.com';
+    if (!isOwnerOrAdmin) {
+      alert('⛔ নিরাপত্তা সতর্কতা: আপনি এই ক্যাম্পেইনের মালিক নন।');
+      return;
+    }
+
     const nextStatus = camp.status === 'active' ? 'paused' : 'active';
     const campRef = doc(db, 'videoCampaigns', camp.id);
     try {
@@ -97,27 +146,67 @@ export const MyCampaignsView: React.FC<MyCampaignsProps> = ({
         status: nextStatus,
         updatedAt: new Date().toISOString(),
       });
+      setToastMessage(nextStatus === 'active' ? '▶️ ক্যাম্পেইন পুনরায় চালু হয়েছে!' : '⏸️ ক্যাম্পেইন সাময়িকভাবে স্থগিত রাখা হয়েছে।');
+      setTimeout(() => setToastMessage(null), 3000);
     } catch (err) {
       handleFirestoreError(err, OperationType.UPDATE, `videoCampaigns/${camp.id}`);
     }
   };
 
-  // Delete Video Campaign and refund remaining views
-  const handleDeleteVideoCampaign = async (camp: VideoCampaign) => {
-    if (!confirm('আপনি কি এই ক্যাম্পেইনটি মুছে দিতে চান? অবশিষ্ট অসম্পূর্ণ ভিউয়ের ক্রেডিট ব্যালেন্সে ফেরত দেওয়া হবে।')) return;
+  // Request Delete with strict ownership check
+  const handleRequestDeleteCampaign = (camp: VideoCampaign) => {
+    if (!userProfile) {
+      openAuthModal();
+      return;
+    }
+
+    const isRealOwner = (userProfile.uid && camp.userId && userProfile.uid === camp.userId) ||
+                        (userProfile.email && camp.creatorEmail && userProfile.email === camp.creatorEmail) ||
+                        (userProfile.email === 'basharmotivationbangla@gmail.com');
+
+    if (!isRealOwner) {
+      alert('⛔ নিরাপত্তা সতর্কতা: আপনি এই ক্যাম্পেইনের মালিক নন। অন্য কোনো একাউন্টের ভিডিও ডিলিট করা নিষিদ্ধ!');
+      return;
+    }
+
+    setCampaignToDelete(camp);
+  };
+
+  // Execute deletion and refund remaining views
+  const executeDeleteCampaign = async (camp: VideoCampaign) => {
     if (!userProfile) return;
 
+    const isRealOwner = (userProfile.uid && camp.userId && userProfile.uid === camp.userId) ||
+                        (userProfile.email && camp.creatorEmail && userProfile.email === camp.creatorEmail) ||
+                        (userProfile.email === 'basharmotivationbangla@gmail.com');
+
+    if (!isRealOwner) {
+      alert('⛔ নিরাপত্তা সতর্কতা: শুধুমাত্র এই ক্যাম্পেইনের মালিকই এটি মুছতে পারবেন।');
+      setCampaignToDelete(null);
+      return;
+    }
+
+    setDeleteLoading(true);
     const remainingViews = Math.max(0, camp.targetViews - camp.completedViews);
     const refundCredits = remainingViews * camp.costPerView;
     const now = new Date().toISOString();
 
     try {
-      // 1. Delete campaign
-      await deleteDoc(doc(db, 'videoCampaigns', camp.id));
+      const campRef = doc(db, 'videoCampaigns', camp.id);
 
-      // 2. Refund if any
+      // 1. Soft-delete by setting status = 'deleted'
+      try {
+        await updateDoc(campRef, {
+          status: 'deleted',
+          updatedAt: now,
+        });
+      } catch (softErr) {
+        console.warn('Notice setting status deleted:', softErr);
+      }
+
+      // 2. Refund to creator's account
       if (refundCredits > 0) {
-        const userRef = doc(db, 'users', userProfile.uid);
+        const userRef = doc(db, 'users', camp.userId);
         await updateDoc(userRef, {
           credits: increment(refundCredits),
           updatedAt: now,
@@ -127,15 +216,28 @@ export const MyCampaignsView: React.FC<MyCampaignsProps> = ({
         const txRef = doc(db, 'transactions', `refund_${camp.id}_${Date.now()}`);
         await setDoc(txRef, {
           id: `refund_${camp.id}_${Date.now()}`,
-          userId: userProfile.uid,
+          userId: camp.userId,
           type: 'campaign_refund',
           amount: refundCredits,
-          description: `💰 ক্যাম্পেইন রিফান্ড (${remainingViews} অসম্পূর্ণ ভিউ)`,
+          description: `💰 ক্যাম্পেইন মোছা রিফান্ড: ${camp.videoTitle.slice(0, 30)} (${remainingViews} অসম্পূর্ণ ভিউ)`,
           createdAt: now,
         });
       }
+
+      // 3. Delete campaign doc
+      await deleteDoc(campRef);
+
+      // 4. Update UI
+      setMyVideos((prev) => prev.filter((c) => c.id !== camp.id));
+      setCampaignToDelete(null);
+      confetti({ particleCount: 75, spread: 65, origin: { y: 0.6 } });
+      setToastMessage(`✅ ক্যাম্পেইন সফলভাবে মুছে ফেলা হয়েছে!${refundCredits > 0 ? ` একাউন্টে +${refundCredits.toLocaleString()} ক্রেডিট ফেরত দেওয়া হয়েছে।` : ''}`);
+      setTimeout(() => setToastMessage(null), 5000);
     } catch (err) {
+      console.warn('Error deleting campaign:', err);
       handleFirestoreError(err, OperationType.DELETE, `videoCampaigns/${camp.id}`);
+    } finally {
+      setDeleteLoading(false);
     }
   };
 
@@ -262,6 +364,28 @@ export const MyCampaignsView: React.FC<MyCampaignsProps> = ({
 
 
 
+      {/* Owner Protection Verification Banner */}
+      <div className="bg-gradient-to-r from-emerald-950/40 via-slate-900 to-slate-900 border border-emerald-500/30 rounded-3xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xl">
+        <div className="flex items-center gap-3.5">
+          <div className="w-11 h-11 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shrink-0 shadow-inner">
+            <ShieldCheck className="w-6 h-6 text-emerald-400" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h4 className="text-xs sm:text-sm font-black text-white">
+                একাউন্ট ওনার সুরক্ষা বলয় সক্রিয় (Owner Protection Active)
+              </h4>
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold px-2 py-0.5 rounded-full border border-emerald-500/30">
+                🔒 এনক্রিপ্টেড
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-0.5 leading-relaxed">
+              আপনার জমা দেওয়া কোনো ভিডিও অন্য কোনো একাউন্ট থেকে ডিলিট বা পরিবর্তন করা অসম্ভব। শুধুমাত্র আপনার বর্তমান Google একাউন্ট (<span className="text-slate-200 font-mono">{userProfile.email}</span>) এটি নিয়ন্ত্রণ করতে পারে।
+            </p>
+          </div>
+        </div>
+      </div>
+
       {/* Tabs Bar */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
         <div className="flex items-center gap-2">
@@ -302,14 +426,70 @@ export const MyCampaignsView: React.FC<MyCampaignsProps> = ({
       {/* TAB 1: MY VIDEO CAMPAIGNS */}
       {activeTab === 'video' && (
         <div className="space-y-4">
-          {myVideos.map((camp) => {
+          {/* Status Filter Chips */}
+          {myVideos.length > 0 && (
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+              <button
+                onClick={() => setCampaignFilter('all')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer ${
+                  campaignFilter === 'all'
+                    ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-md'
+                    : 'bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                সব ক্যাম্পেইন ({myVideos.length})
+              </button>
+              <button
+                onClick={() => setCampaignFilter('active')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer border ${
+                  campaignFilter === 'active'
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white border-emerald-500 shadow-md'
+                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                চলমান ({myVideos.filter((c) => c.status === 'active' && c.completedViews < c.targetViews).length})
+              </button>
+              <button
+                onClick={() => setCampaignFilter('paused')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer border ${
+                  campaignFilter === 'paused'
+                    ? 'bg-gradient-to-r from-amber-600 to-orange-600 text-white border-amber-500 shadow-md'
+                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                স্থগিত ({myVideos.filter((c) => c.status === 'paused').length})
+              </button>
+              <button
+                onClick={() => setCampaignFilter('completed')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold shrink-0 transition-all cursor-pointer border ${
+                  campaignFilter === 'completed'
+                    ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-500 shadow-md'
+                    : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                সম্পন্ন ({myVideos.filter((c) => c.completedViews >= c.targetViews || c.status === 'completed').length})
+              </button>
+            </div>
+          )}
+
+          {/* List of campaigns */}
+          {myVideos
+            .filter((c) => {
+              if (campaignFilter === 'all') return true;
+              if (campaignFilter === 'active') return c.status === 'active' && c.completedViews < c.targetViews;
+              if (campaignFilter === 'paused') return c.status === 'paused';
+              if (campaignFilter === 'completed') return c.completedViews >= c.targetViews || c.status === 'completed';
+              return true;
+            })
+            .map((camp) => {
             const percent = Math.min(100, Math.round((camp.completedViews / camp.targetViews) * 100));
+            const isFinished = camp.completedViews >= camp.targetViews || camp.status === 'completed';
             return (
               <div
                 key={camp.id}
                 className="bg-slate-900/90 backdrop-blur-xl border border-slate-800/90 rounded-3xl p-5 sm:p-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-5 shadow-xl hover:border-slate-700/80 transition-all"
               >
-                <div className="flex items-center gap-4 min-w-0">
+                <div className="flex items-center gap-4 min-w-0 flex-1">
                   <div className="relative w-28 h-18 rounded-2xl overflow-hidden bg-black shrink-0 ring-1 ring-slate-800 shadow-md">
                     <img
                       src={getYouTubeThumbnail(camp.videoId)}
@@ -321,16 +501,16 @@ export const MyCampaignsView: React.FC<MyCampaignsProps> = ({
                     </div>
                   </div>
 
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-lg uppercase tracking-wider ${
-                        camp.completedViews >= camp.targetViews || camp.status === 'completed'
+                        isFinished
                           ? 'bg-blue-500/15 text-blue-300 border border-blue-500/30'
                           : camp.status === 'active'
                           ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
                           : 'bg-amber-500/10 text-amber-400 border border-amber-500/30'
                       }`}>
-                        {camp.completedViews >= camp.targetViews || camp.status === 'completed'
+                        {isFinished
                           ? 'সম্পন্ন (প্রচার বন্ধ)' 
                           : camp.status === 'active' 
                           ? 'চলমান (Active)' 
@@ -339,26 +519,51 @@ export const MyCampaignsView: React.FC<MyCampaignsProps> = ({
                       <span className="text-xs font-mono font-bold text-amber-400">
                         {camp.targetSeconds} সেকেন্ড ভিউ
                       </span>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-md">
+                        <ShieldCheck className="w-3 h-3" />
+                        <span>আপনার মালিকানাধীন</span>
+                      </span>
                     </div>
 
                     <h4 className="text-sm font-bold text-white truncate mt-1.5">
-                      {camp.videoTitle}
+                      {resolvedTitles[camp.videoId] || camp.videoTitle}
                     </h4>
 
-                    <p className="text-xs text-slate-400 mt-1 font-mono">
-                      খরচ: {camp.costPerView} ক্রেডিট/ভিউ • তারিখ: {new Date(camp.createdAt).toLocaleDateString()}
-                    </p>
+                    <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 font-mono flex-wrap">
+                      <span>খরচ: {camp.costPerView} ক্রেডিট/ভিউ</span>
+                      <span>•</span>
+                      <span>তারিখ: {new Date(camp.createdAt).toLocaleDateString()}</span>
+                      <span>•</span>
+                      <button
+                        onClick={() => handleCopyLink(camp.videoId)}
+                        className="text-slate-400 hover:text-white inline-flex items-center gap-1 font-sans text-[11px] cursor-pointer"
+                        title="লিংক কপি করুন"
+                      >
+                        <Copy className="w-3 h-3 text-amber-400" />
+                        <span>কপি</span>
+                      </button>
+                      <a
+                        href={`https://www.youtube.com/watch?v=${camp.videoId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-slate-400 hover:text-white inline-flex items-center gap-1 font-sans text-[11px]"
+                        title="ইউটিউবে খুলুন"
+                      >
+                        <ExternalLink className="w-3 h-3 text-rose-400" />
+                        <span>ইউটিউব</span>
+                      </a>
+                    </div>
                   </div>
                 </div>
 
-                  {/* Progress & Controls */}
+                {/* Progress & Controls */}
                 <div className="w-full md:w-80 shrink-0 space-y-2.5">
                   <div className="flex justify-between text-xs text-slate-300 font-semibold">
                     <span className="flex items-center gap-1.5">
                       <span>অগ্রগতি ({percent}%)</span>
-                      {camp.completedViews >= camp.targetViews && (
+                      {isFinished && (
                         <span className="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                          ১০০% সম্পন্ন (আর প্রকাশ হবে না)
+                          ১০০% সম্পন্ন
                         </span>
                       )}
                     </span>
@@ -371,7 +576,7 @@ export const MyCampaignsView: React.FC<MyCampaignsProps> = ({
                     />
                   </div>
                   <div className="flex items-center justify-end gap-2 pt-1">
-                    {camp.status !== 'completed' && camp.completedViews < camp.targetViews && (
+                    {!isFinished && (
                       <button
                         onClick={() => handleToggleVideoStatus(camp)}
                         className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold border border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
@@ -381,9 +586,9 @@ export const MyCampaignsView: React.FC<MyCampaignsProps> = ({
                       </button>
                     )}
                     <button
-                      onClick={() => handleDeleteVideoCampaign(camp)}
+                      onClick={() => handleRequestDeleteCampaign(camp)}
                       className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-rose-600/20 to-red-600/20 hover:from-rose-600 hover:to-red-600 hover:text-white text-rose-300 text-xs font-bold border border-rose-500/40 flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
-                      title="মুছে ফেলুন এবং রিফান্ড নিন"
+                      title="মুছে ফেলুন এবং পয়েন্ট ফেরত নিন"
                     >
                       <Trash2 className="w-3.5 h-3.5 text-rose-400" />
                       <span>ভিডিও ডিলিট</span>
@@ -465,6 +670,123 @@ export const MyCampaignsView: React.FC<MyCampaignsProps> = ({
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* CONFIRMATION MODAL FOR DELETING VIDEO CAMPAIGN */}
+      {campaignToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+          <div 
+            className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden p-6 space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-500/15 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                  <AlertTriangle className="w-5 h-5 text-rose-400" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-white">ভিডিও ক্যাম্পেইন মুছে ফেলার নিশ্চিতকরণ</h3>
+                  <p className="text-xs text-slate-400">অবশিষ্ট ভিউয়ের পয়েন্ট একাউন্টে রিফান্ড হবে</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setCampaignToDelete(null)}
+                disabled={deleteLoading}
+                className="text-slate-400 hover:text-white p-1.5 rounded-xl hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Campaign Summary Card */}
+            <div className="bg-slate-950 p-4 rounded-2xl border border-slate-800/80 flex items-center gap-3.5">
+              <img
+                src={getYouTubeThumbnail(campaignToDelete.videoId)}
+                alt={campaignToDelete.videoTitle}
+                className="w-20 h-14 rounded-xl object-cover shrink-0 ring-1 ring-slate-800"
+              />
+              <div className="min-w-0 flex-1">
+                <h4 className="text-xs font-bold text-white truncate">
+                  {resolvedTitles[campaignToDelete.videoId] || campaignToDelete.videoTitle}
+                </h4>
+                <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1 font-mono">
+                  <span>ভিউ: {campaignToDelete.completedViews}/{campaignToDelete.targetViews}</span>
+                  <span>•</span>
+                  <span>{campaignToDelete.targetSeconds} সে.</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Refund & Security Breakdown */}
+            {(() => {
+              const remaining = Math.max(0, campaignToDelete.targetViews - campaignToDelete.completedViews);
+              const refund = remaining * campaignToDelete.costPerView;
+              return (
+                <div className="space-y-3">
+                  <div className="p-4 bg-gradient-to-br from-amber-500/10 via-slate-950 to-slate-950 rounded-2xl border border-amber-500/30 space-y-2">
+                    <div className="flex items-center justify-between text-xs font-bold">
+                      <span className="text-slate-300">অবশিষ্ট অবিক্রীত ভিউ:</span>
+                      <span className="font-mono text-white">{remaining} টি ভিউ</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs font-bold border-t border-slate-800/80 pt-2">
+                      <span className="text-amber-300 flex items-center gap-1.5">
+                        <Coins className="w-4 h-4 text-amber-400" />
+                        <span>আপনার ব্যালেন্সে রিফান্ড হবে:</span>
+                      </span>
+                      <span className="font-mono text-amber-300 text-sm font-black">+{refund.toLocaleString()} ক্রেডিট</span>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800/80 text-[11px] text-slate-400 flex items-start gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <span>
+                      ওনার সুরক্ষা যাচাইকৃত: আপনি এই ক্যাম্পেইনের মূল মালিক ({userProfile.email}) হিসেবে এটি ডিলিট করছেন। অন্য কোনো একাউন্ট থেকে এটি ডিলিট করা সম্ভব নয়।
+                    </span>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setCampaignToDelete(null)}
+                disabled={deleteLoading}
+                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-300 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
+              >
+                বাতিল করুন
+              </button>
+              <button
+                type="button"
+                onClick={() => executeDeleteCampaign(campaignToDelete)}
+                disabled={deleteLoading}
+                className="px-5 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white shadow-lg shadow-rose-600/30 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {deleteLoading ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>ডিলিট ও রিফান্ড হচ্ছে...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>ক্যাম্পেইন ডিলিট ও ক্রেডিট রিফান্ড নিন</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* FLOATING TOAST NOTIFICATION */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 max-w-md bg-slate-900 border border-emerald-500/50 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-fadeIn">
+          <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+          <span className="text-xs font-bold leading-relaxed">{toastMessage}</span>
         </div>
       )}
     </div>

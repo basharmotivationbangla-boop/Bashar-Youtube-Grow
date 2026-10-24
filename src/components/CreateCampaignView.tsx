@@ -19,7 +19,7 @@ import { doc, setDoc, updateDoc, increment } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { VideoCampaign, Transaction } from '../types';
-import { extractYouTubeVideoId, getYouTubeThumbnail } from '../utils/youtube';
+import { extractYouTubeVideoId, getYouTubeThumbnail, fetchYouTubeVideoTitle } from '../utils/youtube';
 import confetti from 'canvas-confetti';
 
 interface CreateCampaignProps {
@@ -41,6 +41,8 @@ export const CreateCampaignView: React.FC<CreateCampaignProps> = ({
   const [videoUrl, setVideoUrl] = useState('');
   const [targetSeconds, setTargetSeconds] = useState<number | string>(60);
   const [targetViews, setTargetViews] = useState<number | string>(10);
+  const [videoTitle, setVideoTitle] = useState<string>('');
+  const [isFetchingTitle, setIsFetchingTitle] = useState<boolean>(false);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,6 +50,33 @@ export const CreateCampaignView: React.FC<CreateCampaignProps> = ({
 
   // Computed values
   const extractedVideoId = extractYouTubeVideoId(videoUrl);
+
+  // Auto-fetch real YouTube video title as requested
+  React.useEffect(() => {
+    let isMounted = true;
+    if (extractedVideoId) {
+      setIsFetchingTitle(true);
+      fetchYouTubeVideoTitle(extractedVideoId)
+        .then((title) => {
+          if (isMounted) {
+            setVideoTitle(title);
+            setIsFetchingTitle(false);
+          }
+        })
+        .catch(() => {
+          if (isMounted) {
+            setVideoTitle(`YouTube Video (${extractedVideoId})`);
+            setIsFetchingTitle(false);
+          }
+        });
+    } else {
+      setVideoTitle('');
+      setIsFetchingTitle(false);
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [extractedVideoId]);
   const numSeconds = typeof targetSeconds === 'number' ? targetSeconds : parseInt(targetSeconds, 10) || 0;
   const numViews = typeof targetViews === 'number' ? targetViews : parseInt(targetViews, 10) || 0;
   const totalVideoCost = numSeconds * numViews;
@@ -98,7 +127,7 @@ export const CreateCampaignView: React.FC<CreateCampaignProps> = ({
     setLoading(true);
     const now = new Date().toISOString();
     const campaignId = `vid_${extractedVideoId}_${Date.now()}`;
-    const autoTitle = `ভিডিও #${extractedVideoId}`;
+    const finalTitle = (videoTitle || `ইউটিউব ভিডিও (${extractedVideoId})`).trim().slice(0, 190);
 
     try {
       // 1. Create VideoCampaign document with free-form seconds and views
@@ -109,7 +138,7 @@ export const CreateCampaignView: React.FC<CreateCampaignProps> = ({
         creatorEmail: userProfile.email,
         videoUrl: `https://www.youtube.com/watch?v=${extractedVideoId}`,
         videoId: extractedVideoId,
-        videoTitle: autoTitle,
+        videoTitle: finalTitle,
         targetSeconds: numSeconds,
         costPerView: numSeconds,
         targetViews: numViews,
@@ -134,7 +163,7 @@ export const CreateCampaignView: React.FC<CreateCampaignProps> = ({
         userId: userProfile.uid,
         type: 'campaign_created',
         amount: -totalVideoCost,
-        description: `🎬 ভিডিও ভিউ ক্যাম্পেইন: ${autoTitle} (${numViews} ভিউ, ${numSeconds} সেকেন্ড)`,
+        description: `🎬 ভিডিও ভিউ ক্যাম্পেইন: ${finalTitle.slice(0, 40)} (${numViews} ভিউ, ${numSeconds} সেকেন্ড)`,
         createdAt: now,
       };
       await setDoc(txRef, newTx);
@@ -208,28 +237,35 @@ export const CreateCampaignView: React.FC<CreateCampaignProps> = ({
           </p>
         </div>
 
-        {/* Live Detected Video Card */}
+        {/* Live Detected Video Card with Real YouTube Title */}
         {extractedVideoId && (
-          <div className="p-4 bg-slate-950/60 rounded-2xl border border-slate-800 flex items-center gap-4 animate-fadeIn">
-            <div className="relative w-28 h-18 rounded-xl overflow-hidden bg-black shrink-0 ring-1 ring-slate-700">
+          <div className="p-4 bg-slate-950/80 rounded-2xl border border-slate-800 flex flex-col sm:flex-row sm:items-center gap-4 animate-fadeIn shadow-lg">
+            <div className="relative w-full sm:w-36 h-22 rounded-xl overflow-hidden bg-black shrink-0 ring-1 ring-slate-700">
               <img
                 src={getYouTubeThumbnail(extractedVideoId)}
-                alt="Preview"
+                alt={videoTitle || "Preview"}
                 className="w-full h-full object-cover"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-1.5">
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end p-2">
                 <Play className="w-4 h-4 text-white fill-white" />
               </div>
             </div>
-            <div className="min-w-0">
-              <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
-                ভিডিও সংযুক্ত হয়েছে
-              </span>
-              <p className="text-xs font-mono font-medium text-slate-200 mt-1 truncate">
-                ID: {extractedVideoId}
-              </p>
-              <p className="text-[11px] text-slate-400 mt-0.5">
-                ভিউয়াররা সরাসরি এই ভিডিওটি দেখবে
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-md">
+                  YouTube ভিডিও
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono">ID: {extractedVideoId}</span>
+              </div>
+              <h4 className="text-xs sm:text-sm font-bold text-white line-clamp-2 leading-snug">
+                {isFetchingTitle ? (
+                  <span className="text-amber-400 animate-pulse">ইউটিউব থেকে আসল টাইটেল লোড হচ্ছে...</span>
+                ) : (
+                  videoTitle || `ইউটিউব ভিডিও (${extractedVideoId})`
+                )}
+              </h4>
+              <p className="text-[11px] text-slate-400">
+                ✓ ইউটিউব ভিডিওর আসল নামেই ক্যাম্পেইনটি সরাসরি যুক্ত হবে।
               </p>
             </div>
           </div>
