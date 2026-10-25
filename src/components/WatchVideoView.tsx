@@ -68,7 +68,18 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [selectedDurationFilter, setSelectedDurationFilter] = useState<number | 'all'>('all');
   const [activeCampaign, setActiveCampaign] = useState<VideoCampaign | null>(null);
-  const [autoPlayNext, setAutoPlayNext] = useState<boolean>(true);
+  const [autoPlayNext, setAutoPlayNext] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const saved = localStorage.getItem('bashar_auto_next');
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  const handleToggleAutoPlayNext = (val: boolean) => {
+    setAutoPlayNext(val);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('bashar_auto_next', String(val));
+    }
+  };
 
   // Protected delete & 3-dot dropdown states
   const [campaignToDelete, setCampaignToDelete] = useState<VideoCampaign | null>(null);
@@ -89,6 +100,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
   const [watchedRecords, setWatchedRecords] = useState<Set<string>>(new Set());
   const [videoDetailsMap, setVideoDetailsMap] = useState<Record<string, YouTubeVideoDetails>>({});
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const claimingRef = useRef<boolean>(false);
 
   const isAdmin = userProfile?.email === 'basharmotivationbangla@gmail.com';
 
@@ -207,42 +219,9 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
     }
   }, [activeCampaign?.id, activeCampaign?.videoId]);
 
-  // Handle Timer Countdown
-  useEffect(() => {
-    if (isPlaying && secondsRemaining > 0) {
-      timerRef.current = setInterval(() => {
-        setSecondsRemaining((prev) => {
-          if (prev <= 1) {
-            clearInterval(timerRef.current!);
-            setIsCompleted(true);
-            setIsPlaying(false);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      if (timerRef.current) clearInterval(timerRef.current);
-    }
-
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [isPlaying, secondsRemaining]);
-
-  // Start watching video
-  const handleStartWatch = () => {
-    if (!activeCampaign) return;
-    if (activeCampaign.status !== 'active' || (Number(activeCampaign.completedViews) || 0) >= Number(activeCampaign.targetViews)) {
-      alert('এই ক্যাম্পেইনের নির্ধারিত ভিউ কোটা সম্পূর্ণ হয়েছে! এটি আর প্রদর্শিত হবে না। পরবর্তী ভিডিওতে যাওয়া হচ্ছে।');
-      handleNextVideo();
-      return;
-    }
-    setIsPlaying(true);
-  };
-
   // Fast Next Video: Instant transition without delays
   const handleNextVideo = () => {
+    claimingRef.current = false;
     const availablePool = campaigns.filter(
       (c) => c.status === 'active' && (Number(c.completedViews) || 0) < Number(c.targetViews)
     );
@@ -274,24 +253,26 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
     }
   };
 
-  // Claim Earned Credits
-  const handleClaimCredits = async () => {
+  // Automatic Credit Claiming: Adds credits instantly upon video watch completion
+  const handleClaimCredits = async (targetCampInput?: VideoCampaign) => {
+    const targetCamp = targetCampInput || activeCampaign;
+    if (!targetCamp) return;
+
     if (!userProfile) {
+      setIsCompleted(true);
+      setIsPlaying(false);
+      setClaimSuccessMessage('ভিডিও দেখা সম্পন্ন! অর্জিত ক্রেডিট একাউন্টে জমা করতে Google দিয়ে প্রবেশ করুন।');
       openAuthModal();
       return;
     }
-    if (!activeCampaign || !isCompleted) return;
 
-    if (activeCampaign.status !== 'active' || (Number(activeCampaign.completedViews) || 0) >= Number(activeCampaign.targetViews)) {
-      alert('এই ক্যাম্পেইনের নির্ধারিত ভিউ সম্পূর্ণ হয়ে গেছে! এটি আর প্রদর্শিত হবে না। পরবর্তী ভিডিও আনা হচ্ছে।');
-      handleNextVideo();
-      return;
-    }
-
+    if (claimingRef.current) return;
+    claimingRef.current = true;
     setClaiming(true);
-    const creditsToEarn = activeCampaign.targetSeconds;
+
+    const creditsToEarn = targetCamp.targetSeconds;
     const now = new Date().toISOString();
-    const recordId = `${userProfile.uid}_${activeCampaign.id}_${Date.now()}`;
+    const recordId = `${userProfile.uid}_${targetCamp.id}_${Date.now()}`;
 
     try {
       // 1. Create ViewRecord
@@ -299,13 +280,14 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
       const newRecord: ViewRecord = {
         id: recordId,
         userId: userProfile.uid,
-        campaignId: activeCampaign.id,
-        videoId: activeCampaign.videoId,
-        secondsWatched: activeCampaign.targetSeconds,
+        campaignId: targetCamp.id,
+        videoId: targetCamp.videoId,
+        secondsWatched: targetCamp.targetSeconds,
         creditsEarned: creditsToEarn,
         createdAt: now,
       };
       await setDoc(viewRecordRef, newRecord);
+      setWatchedRecords((prev) => new Set(prev).add(targetCamp.id));
 
       // 2. Create Transaction Log
       const txRef = doc(db, 'transactions', `tx_${recordId}`);
@@ -314,7 +296,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
         userId: userProfile.uid,
         type: 'view_reward',
         amount: creditsToEarn,
-        description: `🎬 ভিডিও ভিউ রিওয়ার্ড: ${activeCampaign.videoTitle.slice(0, 35)} (${activeCampaign.targetSeconds} সেকেন্ড)`,
+        description: `🎬 ভিডিও ভিউ রিওয়ার্ড: +${creditsToEarn} ক্রেডিট অটোমেটিক যোগ হয়েছে (${targetCamp.targetSeconds} সেকেন্ড)`,
         createdAt: now,
       };
       await setDoc(txRef, newTx);
@@ -327,10 +309,10 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
       });
 
       // 4. Increment campaign completedViews safely and mark completed if target reached
-      const campRef = doc(db, 'videoCampaigns', activeCampaign.id);
-      const currentCompleted = Number(activeCampaign.completedViews) || 0;
+      const campRef = doc(db, 'videoCampaigns', targetCamp.id);
+      const currentCompleted = Number(targetCamp.completedViews) || 0;
       const nextViews = currentCompleted + 1;
-      const isNowCompleted = nextViews >= Number(activeCampaign.targetViews);
+      const isNowCompleted = nextViews >= Number(targetCamp.targetViews);
 
       try {
         await updateDoc(campRef, {
@@ -344,7 +326,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
 
       // Immediately prune from local active campaigns list if now completed
       if (isNowCompleted) {
-        setCampaigns((prev) => prev.filter((c) => c.id !== activeCampaign.id));
+        setCampaigns((prev) => prev.filter((c) => c.id !== targetCamp.id));
       }
 
       // Confetti celebration!
@@ -355,21 +337,67 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
         colors: ['#ef4444', '#f59e0b', '#10b981', '#3b82f6'],
       });
 
-      if (isNowCompleted) {
-        setClaimSuccessMessage(`অভিনন্দন! +${creditsToEarn} ক্রেডিট যোগ হয়েছে। এই ভিডিওর নির্ধারিত কোটা পূর্ণ হওয়ায় প্রচার সমাপ্ত হয়েছে।`);
+      if (autoPlayNext) {
+        setClaimSuccessMessage(`🎉 অভিনন্দন! +${creditsToEarn} ক্রেডিট অটোমেটিক যোগ হয়েছে। স্বয়ংক্রিয়ভাবে পরবর্তী ভিডিও প্লে হচ্ছে...`);
+        setTimeout(() => {
+          handleNextVideo();
+        }, 1400);
       } else {
-        setClaimSuccessMessage(`অভিনন্দন! +${creditsToEarn} ক্রেডিট আপনার একাউন্টে সফলভাবে যোগ হয়েছে।`);
+        setClaimSuccessMessage(`🎉 অভিনন্দন! +${creditsToEarn} ক্রেডিট আপনার একাউন্টে অটোমেটিক যোগ হয়েছে।`);
       }
-
-      setTimeout(() => {
-        handleNextVideo();
-      }, 500);
     } catch (err: any) {
       console.warn('Notice claiming view credits:', err);
-      handleFirestoreError(err, OperationType.UPDATE, `videoCampaigns/${activeCampaign.id}`);
+      handleFirestoreError(err, OperationType.UPDATE, `videoCampaigns/${targetCamp.id}`);
     } finally {
       setClaiming(false);
+      claimingRef.current = false;
     }
+  };
+
+  // Handle Timer Countdown & Automatic Credit Claiming
+  useEffect(() => {
+    if (isPlaying && secondsRemaining > 0) {
+      timerRef.current = setInterval(() => {
+        setSecondsRemaining((prev) => {
+          if (prev <= 1) {
+            clearInterval(timerRef.current!);
+            setIsCompleted(true);
+            setIsPlaying(false);
+
+            // Automatically claim credits the moment timer finishes!
+            if (activeCampaign) {
+              handleClaimCredits(activeCampaign);
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    } else {
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  }, [isPlaying, secondsRemaining, activeCampaign, userProfile, autoPlayNext]);
+
+  // If user completed video watch and then logged in, auto-claim pending credits
+  useEffect(() => {
+    if (isCompleted && userProfile && !claimingRef.current && activeCampaign && !watchedRecords.has(activeCampaign.id)) {
+      handleClaimCredits(activeCampaign);
+    }
+  }, [isCompleted, userProfile, activeCampaign]);
+
+  // Start watching video
+  const handleStartWatch = () => {
+    if (!activeCampaign) return;
+    if (activeCampaign.status !== 'active' || (Number(activeCampaign.completedViews) || 0) >= Number(activeCampaign.targetViews)) {
+      alert('এই ক্যাম্পেইনের নির্ধারিত ভিউ কোটা সম্পূর্ণ হয়েছে! এটি আর প্রদর্শিত হবে না। পরবর্তী ভিডিওতে যাওয়া হচ্ছে।');
+      handleNextVideo();
+      return;
+    }
+    setIsPlaying(true);
   };
 
   // Copy link helper
@@ -632,17 +660,25 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2.5 ml-auto">
-                    {/* Auto-Next iOS-style switch */}
-                    <label className="flex items-center gap-2 cursor-pointer select-none text-slate-300 font-semibold text-xs bg-slate-900/95 px-3 py-1.5 rounded-xl border border-slate-800 hover:border-slate-700 transition-colors">
-                      <span className="text-[11px]">অটো-নেক্সট</span>
+                    {/* Auto-Next Switch with explicit status */}
+                    <label 
+                      className="flex items-center gap-2.5 cursor-pointer select-none text-slate-200 font-semibold text-xs bg-slate-900/95 px-3 py-1.5 rounded-xl border border-slate-700/80 hover:border-red-500/40 transition-colors shadow-sm"
+                      title={autoPlayNext ? 'অটো-নেক্সট চালু: ভিডিও শেষ হলে অটোমেটিক ক্রেডিট যোগ হয়ে পরবর্তী ভিডিও চলবে' : 'অটো-নেক্সট বন্ধ: ভিডিও শেষ হলে অটোমেটিক ক্রেডিট যোগ হবে কিন্তু পরবর্তী ভিডিও ম্যানুয়ালি ক্লিক করে চালাতে হবে'}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-bold">অটো-নেক্সট:</span>
+                        <span className={`text-[11px] font-black ${autoPlayNext ? 'text-emerald-400' : 'text-slate-400'}`}>
+                          {autoPlayNext ? 'অন (ON)' : 'অফ (OFF)'}
+                        </span>
+                      </div>
                       <div className="relative">
                         <input
                           type="checkbox"
                           checked={autoPlayNext}
-                          onChange={(e) => setAutoPlayNext(e.target.checked)}
+                          onChange={(e) => handleToggleAutoPlayNext(e.target.checked)}
                           className="sr-only"
                         />
-                        <div className={`w-8 h-4.5 rounded-full transition-colors ${autoPlayNext ? 'bg-gradient-to-r from-red-600 to-rose-600 shadow-sm' : 'bg-slate-700'}`} />
+                        <div className={`w-8 h-4.5 rounded-full transition-colors ${autoPlayNext ? 'bg-gradient-to-r from-emerald-500 to-teal-500 shadow-sm' : 'bg-slate-700'}`} />
                         <div className={`absolute left-0.5 top-0.5 w-3.5 h-3.5 rounded-full bg-white shadow transition-transform ${autoPlayNext ? 'translate-x-3.5' : 'translate-x-0'}`} />
                       </div>
                     </label>
@@ -883,21 +919,62 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                     )}
 
                     {isCompleted && (
-                      <button
-                        onClick={handleClaimCredits}
-                        disabled={claiming}
-                        className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 text-white font-black py-4 px-6 rounded-2xl shadow-2xl shadow-emerald-600/40 transition-all text-base sm:text-lg disabled:opacity-50 cursor-pointer animate-pulse active:scale-[0.99]"
-                      >
-                        {claiming ? (
-                          <div className="w-6 h-6 border-3 border-white border-t-transparent rounded-full animate-spin" />
+                      <div className="w-full space-y-2.5">
+                        {!userProfile ? (
+                          <button
+                            onClick={openAuthModal}
+                            className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-red-600 via-rose-600 to-amber-500 hover:from-red-500 hover:to-amber-400 text-white font-extrabold py-4 px-6 rounded-2xl shadow-xl shadow-red-600/30 transition-all cursor-pointer text-sm sm:text-base active:scale-[0.99]"
+                          >
+                            <Gift className="w-5 h-5 text-amber-200" />
+                            <span>Google দিয়ে প্রবেশ করে +{activeCampaign.targetSeconds} ক্রেডিট গ্রহণ করুন</span>
+                          </button>
+                        ) : autoPlayNext ? (
+                          <div className="w-full p-4 rounded-2xl bg-gradient-to-r from-emerald-950/70 via-slate-900 to-teal-950/70 border border-emerald-500/40 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-300 shrink-0">
+                                <Check className="w-5 h-5 text-emerald-400" />
+                              </div>
+                              <div>
+                                <p className="font-extrabold text-sm sm:text-base text-white">
+                                  +{activeCampaign.targetSeconds} ক্রেডিট অটোমেটিক যোগ হয়েছে!
+                                </p>
+                                <p className="text-xs text-emerald-400">
+                                  অটো-নেক্সট সক্রিয়: স্বয়ংক্রিয়ভাবে পরবর্তী ভিডিও শুরু হচ্ছে...
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={handleNextVideo}
+                              className="w-full sm:w-auto px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl transition-all cursor-pointer shadow-md active:scale-95 shrink-0"
+                            >
+                              এখনই যান ⏭
+                            </button>
+                          </div>
                         ) : (
-                          <>
-                            <Sparkles className="w-6 h-6 text-amber-300" />
-                            <span>পয়েন্ট ক্লেইম করুন (+{activeCampaign.targetSeconds} ক্রেডিট)</span>
-                            <CheckCircle className="w-6 h-6" />
-                          </>
+                          <div className="w-full space-y-2.5">
+                            <div className="p-3.5 rounded-2xl bg-emerald-950/50 border border-emerald-500/40 flex items-center justify-between gap-3 text-emerald-300 text-xs sm:text-sm font-semibold shadow-lg">
+                              <div className="flex items-center gap-2.5">
+                                <Check className="w-5 h-5 text-emerald-400 shrink-0" />
+                                <span>
+                                  +{activeCampaign.targetSeconds} ক্রেডিট অটোমেটিক একাউন্টে যোগ হয়েছে! (অটো-নেক্সট বন্ধ থাকায় পরবর্তী ভিডিও স্বয়ংক্রিয়ভাবে আসেনি)
+                                </span>
+                              </div>
+                              <span className="font-mono text-xs bg-emerald-500/20 px-2 py-0.5 rounded-md text-emerald-300 shrink-0 font-bold">
+                                জমা হয়েছে
+                              </span>
+                            </div>
+
+                            <button
+                              onClick={handleNextVideo}
+                              className="w-full flex items-center justify-center gap-2.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-500 hover:from-red-500 hover:to-rose-500 text-white font-extrabold py-3.5 px-6 rounded-2xl transition-all shadow-xl shadow-red-600/30 active:scale-[0.99] cursor-pointer text-sm sm:text-base"
+                            >
+                              <Play className="w-5 h-5 fill-white" />
+                              <span>পরবর্তী ভিডিও দেখুন (Next Video)</span>
+                              <SkipForward className="w-4 h-4 text-amber-300 ml-1" />
+                            </button>
+                          </div>
                         )}
-                      </button>
+                      </div>
                     )}
                   </div>
                 </div>
