@@ -261,7 +261,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
     if (!userProfile) {
       setIsCompleted(false);
       setIsPlaying(false);
-      setClaimSuccessMessage('গুগল দিয়ে প্রবেশ না করলে কোনো ক্রেডিট জমা হবে না। ক্রেডিট সংগ্রহ করতে প্রথমে Google দিয়ে প্রবেশ করুন।');
+      setClaimSuccessMessage('লগইন না করলে কোনো ক্রেডিট জমা হবে না। ক্রেডিট সংগ্রহ করতে প্রথমে Log in অথবা Sign up করুন।');
       openAuthModal();
       return;
     }
@@ -398,7 +398,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
   const handleStartWatch = () => {
     if (!activeCampaign) return;
     if (!userProfile) {
-      setClaimSuccessMessage('গুগল দিয়ে প্রবেশ না করলে ভিডিও দেখলে ক্রেডিট নেওয়া যাবে না। অনুগ্রহ করে প্রথমে Google দিয়ে প্রবেশ করুন।');
+      setClaimSuccessMessage('ভিডিও দেখার ক্রেডিট নিতে হলে প্রথমে Log in অথবা Sign up করতে হবে।');
       openAuthModal();
       return;
     }
@@ -649,7 +649,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
         </div>
       </div>
 
-      {/* Google Login Required Notice for earning credits */}
+      {/* Login Required Notice for earning credits */}
       {!userProfile && (
         <div className="p-4 rounded-2xl bg-gradient-to-r from-red-950/70 via-slate-900 to-amber-950/70 border border-amber-500/40 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl">
           <div className="flex items-center gap-3">
@@ -657,8 +657,8 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
               <Lock className="w-5 h-5" />
             </div>
             <div>
-              <div className="font-extrabold text-white text-sm">ভিডিও দেখার ক্রেডিট পেতে Google দিয়ে প্রবেশ আবশ্যক</div>
-              <div className="text-xs text-amber-200/90 font-medium">গুগল দিয়ে প্রবেশ না করলে কেউ ভিডিও দেখলে ক্রেডিট নিতে পারবে না। এখনই সাইন ইন করুন ও পান ৫০০ ক্রেডিট ফ্রি!</div>
+              <div className="font-extrabold text-white text-sm">ভিডিও দেখার ক্রেডিট পেতে Log in / Sign up আবশ্যক</div>
+              <div className="text-xs text-amber-200/90 font-medium">লগইন বা সাইন আপ না করলে ভিডিও দেখলে ক্রেডিট নেওয়া যাবে না। এখনই Sign up করে ৫০০ ক্রেডিট ফ্রি নিন!</div>
             </div>
           </div>
           <button
@@ -666,7 +666,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
             className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 active:scale-95 cursor-pointer shrink-0 transition-all"
           >
             <Sparkles className="w-4 h-4 text-amber-300" />
-            <span>Google দিয়ে প্রবেশ করুন</span>
+            <span>Log in / Sign up</span>
           </button>
         </div>
       )}
@@ -753,11 +753,11 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                               <Lock className="w-7 h-7 sm:w-8 sm:h-8" />
                             </div>
                             <p className="mt-3.5 text-white font-black text-sm sm:text-base drop-shadow tracking-tight text-center">
-                              ক্রেডিট পেতে Google দিয়ে প্রবেশ করুন
+                              ক্রেডিট পেতে Log in / Sign up করুন
                             </p>
                             <div className="mt-2 flex items-center gap-1.5 bg-red-600/90 text-white text-xs font-bold px-3 py-1 rounded-full border border-red-400/40 shadow-md">
                               <AlertCircle className="w-3.5 h-3.5" />
-                              <span>গুগল দিয়ে প্রবেশ না করলে কোনো ক্রেডিট পাবেন না</span>
+                              <span>লগইন ছাড়া কেউ ক্রেডিট পাবে না</span>
                             </div>
                           </>
                         ) : (
@@ -931,8 +931,8 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                             <Lock className="w-5 h-5" />
                           </div>
                           <div>
-                            <div className="font-extrabold text-white text-sm">ভিডিও দেখার ক্রেডিট পেতে Google দিয়ে প্রবেশ আবশ্যক</div>
-                            <div className="text-xs text-amber-300 font-medium">গুগল দিয়ে প্রবেশ না করলে কেউ ভিডিও দেখলে ক্রেডিট নিতে পারবে না</div>
+                            <div className="font-extrabold text-white text-sm">ভিডিও দেখার ক্রেডিট পেতে Log in / Sign up আবশ্যক</div>
+                            <div className="text-xs text-amber-300 font-medium">লগইন বা সাইন আপ না করলে কেউ ভিডিও দেখলে ক্রেডিট নিতে পারবে না</div>
                           </div>
                         </div>
                         <button
@@ -940,7 +940,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                           className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 active:scale-95 cursor-pointer shrink-0 transition-all"
                         >
                           <Sparkles className="w-4 h-4 text-amber-300" />
-                          <span>Google দিয়ে প্রবেশ করুন</span>
+                          <span>Log in / Sign up</span>
                         </button>
                       </div>
                     ) : (
@@ -996,7 +996,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                             className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-red-600 via-rose-600 to-amber-500 hover:from-red-500 hover:to-amber-400 text-white font-extrabold py-4 px-6 rounded-2xl shadow-xl shadow-red-600/30 transition-all cursor-pointer text-sm sm:text-base active:scale-[0.99]"
                           >
                             <Gift className="w-5 h-5 text-amber-200" />
-                            <span>Google দিয়ে প্রবেশ করে +{activeCampaign.targetSeconds} ক্রেডিট গ্রহণ করুন</span>
+                            <span>Log in / Sign up করে +{activeCampaign.targetSeconds} ক্রেডিট গ্রহণ করুন</span>
                           </button>
                         ) : autoPlayNext ? (
                           <div className="w-full p-4 rounded-2xl bg-gradient-to-r from-emerald-950/70 via-slate-900 to-teal-950/70 border border-emerald-500/40 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl">

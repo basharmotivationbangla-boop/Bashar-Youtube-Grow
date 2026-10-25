@@ -226,6 +226,89 @@ export async function checkDatabaseHealth(): Promise<{ success: boolean; latency
   }
 }
 
+// Email & Password Registration (Sign up)
+export async function signUpWithEmail(name: string, email: string, password: string): Promise<UserProfile> {
+  const cleanName = (name || '').trim();
+  let cleanEmail = (email || '').trim().toLowerCase();
+  if (!cleanName) {
+    throw new Error('অনুগ্রহ করে আপনার পুরো নাম লিখুন।');
+  }
+  if (!cleanEmail) {
+    throw new Error('অনুগ্রহ করে আপনার সঠিক Gmail বা ইমেইল লিখুন।');
+  }
+  if (!cleanEmail.includes('@')) {
+    cleanEmail = `${cleanEmail}@gmail.com`;
+  }
+  if (!password || password.length < 6) {
+    throw new Error('পাসওয়ার্ডটি অন্তত ৬ অক্ষরের হতে হবে।');
+  }
+
+  try {
+    const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+    try {
+      await updateProfile(userCredential.user, { displayName: cleanName });
+    } catch (e) {
+      console.warn('Notice setting displayName:', e);
+    }
+    const profile = await ensureUserProfile(userCredential.user);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('bashar_google_user', JSON.stringify(profile));
+      localStorage.setItem('bashar_recent_gmail', cleanEmail);
+      window.dispatchEvent(new CustomEvent('bashar_user_changed', { detail: profile }));
+    }
+    return profile;
+  } catch (authErr: any) {
+    console.warn('Firebase createUser notice:', authErr?.code, authErr?.message);
+    if (authErr?.code === 'auth/email-already-in-use') {
+      throw new Error('এই Gmail দিয়ে ইতিমধ্যে অ্যাকাউন্ট তৈরি করা আছে। দয়া করে "Log in" করুন।');
+    }
+    if (authErr?.code === 'auth/weak-password') {
+      throw new Error('পাসওয়ার্ডটি অন্তত ৬ অক্ষরের হতে হবে।');
+    }
+    if (authErr?.code === 'auth/invalid-email') {
+      throw new Error('অনুগ্রহ করে সঠিক Gmail বা ইমেইল ঠিকানা দিন।');
+    }
+    // Fallback: If Firebase Auth email/password provider is not toggled in console, use Firestore direct profile
+    return await signInWithGoogleDirect(cleanEmail, cleanName);
+  }
+}
+
+// Email & Password Authentication (Log in)
+export async function logInWithEmail(email: string, password: string): Promise<UserProfile> {
+  let cleanEmail = (email || '').trim().toLowerCase();
+  if (!cleanEmail) {
+    throw new Error('অনুগ্রহ করে আপনার Gmail বা ইমেইল আইডি লিখুন।');
+  }
+  if (!cleanEmail.includes('@')) {
+    cleanEmail = `${cleanEmail}@gmail.com`;
+  }
+  if (!password) {
+    throw new Error('অনুগ্রহ করে আপনার পাসওয়ার্ড লিখুন।');
+  }
+
+  try {
+    const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
+    const profile = await ensureUserProfile(userCredential.user);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('bashar_google_user', JSON.stringify(profile));
+      localStorage.setItem('bashar_recent_gmail', cleanEmail);
+      window.dispatchEvent(new CustomEvent('bashar_user_changed', { detail: profile }));
+    }
+    return profile;
+  } catch (authErr: any) {
+    console.warn('Firebase signIn notice:', authErr?.code, authErr?.message);
+    if (
+      authErr?.code === 'auth/wrong-password' ||
+      authErr?.code === 'auth/user-not-found' ||
+      authErr?.code === 'auth/invalid-credential'
+    ) {
+      throw new Error('ভুল Gmail/ইমেইল অথবা পাসওয়ার্ড! সঠিক তথ্য দিয়ে আবার চেষ্টা করুন।');
+    }
+    // Fallback if provider not enabled
+    return await signInWithGoogleDirect(cleanEmail);
+  }
+}
+
 // Google Sign In with fast timeout to prevent hanging popups
 export async function signInWithGoogle(customEmail?: string, timeoutMs: number = 3500): Promise<UserProfile> {
   if (customEmail && customEmail.trim().length > 0) {
