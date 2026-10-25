@@ -41,7 +41,8 @@ service cloud.firestore {
       allow create: if isValidId(userId) &&
         isValidUser(incoming()) &&
         incoming().credits <= 500; // Welcome credits cap on creation
-      allow update: if isValidUser(incoming()) &&
+      allow update: if isValidId(userId) &&
+        isValidUser(incoming()) &&
         incoming().uid == existing().uid &&
         incoming().diff(existing()).affectedKeys().hasOnly(['credits', 'displayName', 'photoURL', 'lastCheckInDate', 'checkInStreak', 'updatedAt']);
     }

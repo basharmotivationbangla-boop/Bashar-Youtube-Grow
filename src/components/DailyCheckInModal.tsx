@@ -12,10 +12,10 @@ import {
   ArrowRight,
   AlertCircle
 } from 'lucide-react';
-import { doc, updateDoc, setDoc, increment } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc, increment } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../context/AuthContext';
-import { DAILY_CHECKIN_REWARDS, Transaction } from '../types';
+import { DAILY_CHECKIN_REWARDS, Transaction, UserProfile } from '../types';
 import confetti from 'canvas-confetti';
 
 interface DailyCheckInModalProps {
@@ -24,18 +24,20 @@ interface DailyCheckInModalProps {
 }
 
 export const DailyCheckInModal: React.FC<DailyCheckInModalProps> = ({ isOpen, onClose }) => {
-  const { userProfile, openAuthModal } = useAuth();
+  const { userProfile, openAuthModal, updateUserCredits, setUserProfileDirect } = useAuth();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
-  // Format today's date in local YYYY-MM-DD
+  // Format today's date in local YYYY-MM-DD and UTC YYYY-MM-DD
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
   const day = String(now.getDate()).padStart(2, '0');
-  const todayStr = `${year}-${month}-${day}`;
+  const localTodayStr = `${year}-${month}-${day}`;
+  const utcTodayStr = now.toISOString().split('T')[0];
+  const todayStr = localTodayStr;
 
   // Yesterday date string
   const yesterday = new Date(now);
@@ -47,7 +49,10 @@ export const DailyCheckInModal: React.FC<DailyCheckInModalProps> = ({ isOpen, on
 
   const lastCheckIn = userProfile?.lastCheckInDate;
   const currentStreak = userProfile?.checkInStreak || 0;
-  const isClaimedToday = lastCheckIn === todayStr;
+  // Robust check: claimed today if matches local or UTC date
+  const isClaimedToday = Boolean(
+    lastCheckIn && (lastCheckIn === localTodayStr || lastCheckIn === utcTodayStr)
+  );
 
   // Calculate streak and day in 7-day cycle
   let nextStreak = 1;
@@ -74,16 +79,34 @@ export const DailyCheckInModal: React.FC<DailyCheckInModalProps> = ({ isOpen, on
       return;
     }
 
-    if (isClaimedToday) return;
+    if (isClaimedToday || userProfile.lastCheckInDate === localTodayStr || userProfile.lastCheckInDate === utcTodayStr) {
+      setError('আপনি আজকের বোনাস ইতিমধ্যেই সংগ্রহ করে ফেলেছেন। আগামীকাল আবার চেষ্টা করুন!');
+      return;
+    }
 
     setLoading(true);
     setError(null);
     const nowIso = new Date().toISOString();
-    const txId = `checkin_${userProfile.uid}_${todayStr}`;
+    const userRef = doc(db, 'users', userProfile.uid);
 
     try {
-      // 1. Update user document
-      const userRef = doc(db, 'users', userProfile.uid);
+      // 1. Verify latest status directly from Firestore
+      try {
+        const snap = await getDoc(userRef);
+        if (snap.exists()) {
+          const freshUser = snap.data() as UserProfile;
+          if (freshUser.lastCheckInDate === localTodayStr || freshUser.lastCheckInDate === utcTodayStr) {
+            setUserProfileDirect(freshUser);
+            setError('আপনি আজকের বোনাস ইতিমধ্যেই সংগ্রহ করে ফেলেছেন। আগামীকাল আবার আসবেন!');
+            setLoading(false);
+            return;
+          }
+        }
+      } catch (checkErr) {
+        console.warn('Notice verifying fresh check-in status:', checkErr);
+      }
+
+      // 2. Update user profile with credits, streak, and check-in date
       await updateDoc(userRef, {
         credits: increment(todayReward.credits),
         lastCheckInDate: todayStr,
@@ -91,19 +114,41 @@ export const DailyCheckInModal: React.FC<DailyCheckInModalProps> = ({ isOpen, on
         updatedAt: nowIso,
       });
 
-      // 2. Create Transaction log
-      const txRef = doc(db, 'transactions', txId);
+      // 3. Create unique transaction log
+      const uniqueTxId = `tx_checkin_${userProfile.uid}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const txRef = doc(db, 'transactions', uniqueTxId);
       const newTx: Transaction = {
-        id: txId,
+        id: uniqueTxId,
         userId: userProfile.uid,
         type: 'checkin_reward',
         amount: todayReward.credits,
         description: `🎁 দৈনিক চেক-ইন বোনাস: ${todayReward.label} (+${todayReward.credits} ক্রেডিট)`,
         createdAt: nowIso,
       };
-      await setDoc(txRef, newTx);
 
-      // Celebration confetti
+      try {
+        await setDoc(txRef, newTx);
+      } catch (txErr) {
+        console.warn('Notice writing check-in transaction record:', txErr);
+      }
+
+      // 4. Update local user profile state
+      const updatedUser: UserProfile = {
+        ...userProfile,
+        credits: (userProfile.credits || 0) + todayReward.credits,
+        lastCheckInDate: todayStr,
+        checkInStreak: nextStreak,
+        updatedAt: nowIso,
+      };
+      setUserProfileDirect(updatedUser);
+      updateUserCredits(updatedUser.credits);
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('bashar_google_user', JSON.stringify(updatedUser));
+        window.dispatchEvent(new CustomEvent('bashar_user_changed', { detail: updatedUser }));
+      }
+
+      // 5. Celebration confetti
       try {
         confetti({
           particleCount: 120,
