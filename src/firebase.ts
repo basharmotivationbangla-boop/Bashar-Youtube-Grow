@@ -226,11 +226,23 @@ export async function checkDatabaseHealth(): Promise<{ success: boolean; latency
   }
 }
 
-// Google Sign In (Auto-handles unauthorized-domain and previews smoothly)
-export async function signInWithGoogle(customEmail?: string): Promise<UserProfile> {
+// Google Sign In with fast timeout to prevent hanging popups
+export async function signInWithGoogle(customEmail?: string, timeoutMs: number = 3500): Promise<UserProfile> {
+  if (customEmail && customEmail.trim().length > 0) {
+    return await signInWithGoogleDirect(customEmail);
+  }
+
   try {
-    const result = await signInWithPopup(auth, googleProvider);
-    return await ensureUserProfile(result.user);
+    const popupPromise = signInWithPopup(auth, googleProvider).then((res) => ensureUserProfile(res.user));
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => {
+        const err: any = new Error('পপআপ বিলম্বিত হয়েছে');
+        err.code = 'auth/popup-timeout';
+        reject(err);
+      }, timeoutMs)
+    );
+
+    return await Promise.race([popupPromise, timeoutPromise]);
   } catch (err: any) {
     console.warn('Google popup auth notice:', err?.code, err?.message);
     if (customEmail && customEmail.trim().length > 0) {

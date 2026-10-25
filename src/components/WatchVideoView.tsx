@@ -259,9 +259,9 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
     if (!targetCamp) return;
 
     if (!userProfile) {
-      setIsCompleted(true);
+      setIsCompleted(false);
       setIsPlaying(false);
-      setClaimSuccessMessage('ভিডিও দেখা সম্পন্ন! অর্জিত ক্রেডিট একাউন্টে জমা করতে Google দিয়ে প্রবেশ করুন।');
+      setClaimSuccessMessage('গুগল দিয়ে প্রবেশ না করলে কোনো ক্রেডিট জমা হবে না। ক্রেডিট সংগ্রহ করতে প্রথমে Google দিয়ে প্রবেশ করুন।');
       openAuthModal();
       return;
     }
@@ -357,6 +357,11 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
   // Handle Timer Countdown & Automatic Credit Claiming
   useEffect(() => {
     if (isPlaying && secondsRemaining > 0) {
+      if (!userProfile) {
+        setIsPlaying(false);
+        openAuthModal();
+        return;
+      }
       timerRef.current = setInterval(() => {
         setSecondsRemaining((prev) => {
           if (prev <= 1) {
@@ -392,6 +397,11 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
   // Start watching video
   const handleStartWatch = () => {
     if (!activeCampaign) return;
+    if (!userProfile) {
+      setClaimSuccessMessage('গুগল দিয়ে প্রবেশ না করলে ভিডিও দেখলে ক্রেডিট নেওয়া যাবে না। অনুগ্রহ করে প্রথমে Google দিয়ে প্রবেশ করুন।');
+      openAuthModal();
+      return;
+    }
     if (activeCampaign.status !== 'active' || (Number(activeCampaign.completedViews) || 0) >= Number(activeCampaign.targetViews)) {
       alert('এই ক্যাম্পেইনের নির্ধারিত ভিউ কোটা সম্পূর্ণ হয়েছে! এটি আর প্রদর্শিত হবে না। পরবর্তী ভিডিওতে যাওয়া হচ্ছে।');
       handleNextVideo();
@@ -639,6 +649,28 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
         </div>
       </div>
 
+      {/* Google Login Required Notice for earning credits */}
+      {!userProfile && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-red-950/70 via-slate-900 to-amber-950/70 border border-amber-500/40 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-amber-500/20 text-amber-300 flex items-center justify-center shrink-0 border border-amber-500/30">
+              <Lock className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="font-extrabold text-white text-sm">ভিডিও দেখার ক্রেডিট পেতে Google দিয়ে প্রবেশ আবশ্যক</div>
+              <div className="text-xs text-amber-200/90 font-medium">গুগল দিয়ে প্রবেশ না করলে কেউ ভিডিও দেখলে ক্রেডিট নিতে পারবে না। এখনই সাইন ইন করুন ও পান ৫০০ ক্রেডিট ফ্রি!</div>
+            </div>
+          </div>
+          <button
+            onClick={openAuthModal}
+            className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 active:scale-95 cursor-pointer shrink-0 transition-all"
+          >
+            <Sparkles className="w-4 h-4 text-amber-300" />
+            <span>Google দিয়ে প্রবেশ করুন</span>
+          </button>
+        </div>
+      )}
+
       {/* Main Content Area: Cinema Video Player (8 cols) & Queue (4 cols) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* Left: Cinema Video Player Card */}
@@ -714,18 +746,35 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                         className="w-full h-full object-cover opacity-90 group-hover/thumb:opacity-100 group-hover/thumb:scale-[1.02] transition-all duration-500"
                       />
                       {/* Dark gradient vignette */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/30 flex flex-col items-center justify-center p-4">
-                        {/* Authentic YouTube-style Play Button */}
-                        <div className="w-18 h-13 sm:w-20 sm:h-14 rounded-2xl bg-[#FF0000] hover:bg-[#CC0000] flex items-center justify-center text-white shadow-2xl shadow-red-600/60 group-hover/thumb:scale-110 transition-transform duration-300">
-                          <Play className="w-7 h-7 sm:w-8 sm:h-8 fill-white ml-0.5" />
-                        </div>
-                        <p className="mt-3.5 text-white font-bold text-sm sm:text-base drop-shadow tracking-tight">
-                          ভিডিও প্লে করতে ক্লিক করুন
-                        </p>
-                        <div className="mt-2 flex items-center gap-1.5 bg-black/70 backdrop-blur-md text-amber-300 text-xs font-semibold px-3 py-1 rounded-full border border-amber-500/30">
-                          <Coins className="w-3.5 h-3.5 text-amber-400" />
-                          <span>+{activeCampaign.targetSeconds} ক্রেডিট রিওয়ার্ড পাবেন</span>
-                        </div>
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/35 to-black/35 flex flex-col items-center justify-center p-4">
+                        {!userProfile ? (
+                          <>
+                            <div className="w-18 h-13 sm:w-20 sm:h-14 rounded-2xl bg-gradient-to-tr from-amber-500 to-red-600 flex items-center justify-center text-white shadow-2xl shadow-red-600/50 group-hover/thumb:scale-110 transition-transform duration-300">
+                              <Lock className="w-7 h-7 sm:w-8 sm:h-8" />
+                            </div>
+                            <p className="mt-3.5 text-white font-black text-sm sm:text-base drop-shadow tracking-tight text-center">
+                              ক্রেডিট পেতে Google দিয়ে প্রবেশ করুন
+                            </p>
+                            <div className="mt-2 flex items-center gap-1.5 bg-red-600/90 text-white text-xs font-bold px-3 py-1 rounded-full border border-red-400/40 shadow-md">
+                              <AlertCircle className="w-3.5 h-3.5" />
+                              <span>গুগল দিয়ে প্রবেশ না করলে কোনো ক্রেডিট পাবেন না</span>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            {/* Authentic YouTube-style Play Button */}
+                            <div className="w-18 h-13 sm:w-20 sm:h-14 rounded-2xl bg-[#FF0000] hover:bg-[#CC0000] flex items-center justify-center text-white shadow-2xl shadow-red-600/60 group-hover/thumb:scale-110 transition-transform duration-300">
+                              <Play className="w-7 h-7 sm:w-8 sm:h-8 fill-white ml-0.5" />
+                            </div>
+                            <p className="mt-3.5 text-white font-bold text-sm sm:text-base drop-shadow tracking-tight">
+                              ভিডিও প্লে করতে ক্লিক করুন
+                            </p>
+                            <div className="mt-2 flex items-center gap-1.5 bg-black/70 backdrop-blur-md text-amber-300 text-xs font-semibold px-3 py-1 rounded-full border border-amber-500/30">
+                              <Coins className="w-3.5 h-3.5 text-amber-400" />
+                              <span>+{activeCampaign.targetSeconds} ক্রেডিট রিওয়ার্ড পাবেন</span>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}
@@ -875,25 +924,46 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
 
                   {/* 4. Watch Execution Action Bar */}
                   <div className="pt-2">
-                    {!isPlaying && !isCompleted && (
-                      <div className="w-full flex flex-col sm:flex-row items-center gap-2.5">
+                    {!userProfile ? (
+                      <div className="w-full p-4 rounded-2xl bg-gradient-to-r from-red-950/70 via-slate-900 to-amber-950/70 border border-amber-500/40 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-lg">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-300 flex items-center justify-center shrink-0 border border-amber-500/30">
+                            <Lock className="w-5 h-5" />
+                          </div>
+                          <div>
+                            <div className="font-extrabold text-white text-sm">ভিডিও দেখার ক্রেডিট পেতে Google দিয়ে প্রবেশ আবশ্যক</div>
+                            <div className="text-xs text-amber-300 font-medium">গুগল দিয়ে প্রবেশ না করলে কেউ ভিডিও দেখলে ক্রেডিট নিতে পারবে না</div>
+                          </div>
+                        </div>
                         <button
-                          onClick={handleStartWatch}
-                          className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-500 hover:from-red-500 hover:to-rose-500 text-white font-extrabold py-3.5 px-6 rounded-2xl transition-all shadow-xl shadow-red-600/30 active:scale-[0.99] cursor-pointer text-sm sm:text-base"
+                          onClick={openAuthModal}
+                          className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-black text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-red-600/30 active:scale-95 cursor-pointer shrink-0 transition-all"
                         >
-                          <Play className="w-5 h-5 fill-white" />
-                          <span>ভিডিও দেখা শুরু করুন ({activeCampaign.targetSeconds} সেকেন্ড)</span>
-                        </button>
-
-                        <button
-                          onClick={handleNextVideo}
-                          className="w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 px-5 rounded-2xl transition-colors cursor-pointer text-xs shrink-0 border border-slate-700 active:scale-95"
-                        >
-                          <SkipForward className="w-4 h-4 text-amber-400" />
-                          <span>পরবর্তী ভিডিও</span>
+                          <Sparkles className="w-4 h-4 text-amber-300" />
+                          <span>Google দিয়ে প্রবেশ করুন</span>
                         </button>
                       </div>
-                    )}
+                    ) : (
+                      <>
+                        {!isPlaying && !isCompleted && (
+                          <div className="w-full flex flex-col sm:flex-row items-center gap-2.5">
+                            <button
+                              onClick={handleStartWatch}
+                              className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-500 hover:from-red-500 hover:to-rose-500 text-white font-extrabold py-3.5 px-6 rounded-2xl transition-all shadow-xl shadow-red-600/30 active:scale-[0.99] cursor-pointer text-sm sm:text-base"
+                            >
+                              <Play className="w-5 h-5 fill-white" />
+                              <span>ভিডিও দেখা শুরু করুন ({activeCampaign.targetSeconds} সেকেন্ড)</span>
+                            </button>
+
+                            <button
+                              onClick={handleNextVideo}
+                              className="w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 px-5 rounded-2xl transition-colors cursor-pointer text-xs shrink-0 border border-slate-700 active:scale-95"
+                            >
+                              <SkipForward className="w-4 h-4 text-amber-400" />
+                              <span>পরবর্তী ভিডিও</span>
+                            </button>
+                          </div>
+                        )}
 
                     {isPlaying && !isCompleted && (
                       <div className="w-full flex items-center justify-between bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 text-xs sm:text-sm text-slate-200 shadow-inner">
@@ -976,7 +1046,9 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                         )}
                       </div>
                     )}
-                  </div>
+                  </>
+                )}
+              </div>
                 </div>
               </div>
             </div>
