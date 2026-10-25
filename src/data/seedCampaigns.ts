@@ -3,7 +3,7 @@ import { VideoCampaign } from '../types';
 export const INITIAL_SEED_VIDEOS: Omit<VideoCampaign, 'id' | 'userId' | 'creatorEmail' | 'createdAt'>[] = [
   {
     videoId: 'kJQP7kiw5Fk',
-    videoTitle: 'Luis Fonsi - Despacito (Viral 30s Quick View Boost)',
+    videoTitle: 'Luis Fonsi - Despacito ft. Daddy Yankee',
     videoUrl: 'https://www.youtube.com/watch?v=kJQP7kiw5Fk',
     targetSeconds: 30,
     costPerView: 30,
@@ -13,7 +13,7 @@ export const INITIAL_SEED_VIDEOS: Omit<VideoCampaign, 'id' | 'userId' | 'creator
   },
   {
     videoId: 'fJ9rUzIMcZQ',
-    videoTitle: 'Queen – Bohemian Rhapsody (Official Music Video 45s Boost)',
+    videoTitle: 'Queen – Bohemian Rhapsody (Official Video Remastered)',
     videoUrl: 'https://www.youtube.com/watch?v=fJ9rUzIMcZQ',
     targetSeconds: 45,
     costPerView: 45,
@@ -23,7 +23,7 @@ export const INITIAL_SEED_VIDEOS: Omit<VideoCampaign, 'id' | 'userId' | 'creator
   },
   {
     videoId: 'JGwWNGJdvx8',
-    videoTitle: 'Ed Sheeran - Shape of You (Official Music Video - 60s)',
+    videoTitle: 'Ed Sheeran - Shape of You (Official Music Video)',
     videoUrl: 'https://www.youtube.com/watch?v=JGwWNGJdvx8',
     targetSeconds: 60,
     costPerView: 60,
@@ -33,7 +33,7 @@ export const INITIAL_SEED_VIDEOS: Omit<VideoCampaign, 'id' | 'userId' | 'creator
   },
   {
     videoId: '9bZkp7q19f0',
-    videoTitle: 'PSY - GANGNAM STYLE(강남스타일) M/V (120s High Retention)',
+    videoTitle: 'PSY - GANGNAM STYLE(강남스타일) M/V',
     videoUrl: 'https://www.youtube.com/watch?v=9bZkp7q19f0',
     targetSeconds: 120,
     costPerView: 120,
@@ -43,7 +43,7 @@ export const INITIAL_SEED_VIDEOS: Omit<VideoCampaign, 'id' | 'userId' | 'creator
   },
   {
     videoId: '09R8_2nJtjg',
-    videoTitle: 'Maroon 5 - Sugar (Official Music Video - 180s)',
+    videoTitle: 'Maroon 5 - Sugar (Official Music Video)',
     videoUrl: 'https://www.youtube.com/watch?v=09R8_2nJtjg',
     targetSeconds: 180,
     costPerView: 180,
@@ -53,7 +53,7 @@ export const INITIAL_SEED_VIDEOS: Omit<VideoCampaign, 'id' | 'userId' | 'creator
   },
   {
     videoId: '2Vv-BfVoq4g',
-    videoTitle: 'Ed Sheeran - Perfect (Official Music Video - 300s 5 Mins)',
+    videoTitle: 'Ed Sheeran - Perfect (Official Music Video)',
     videoUrl: 'https://www.youtube.com/watch?v=2Vv-BfVoq4g',
     targetSeconds: 300,
     costPerView: 300,
@@ -63,7 +63,7 @@ export const INITIAL_SEED_VIDEOS: Omit<VideoCampaign, 'id' | 'userId' | 'creator
   },
   {
     videoId: 'kXYiU_JCYtU',
-    videoTitle: 'Linkin Park - Numb (Official Music Video [4K Upgrade] - 600s)',
+    videoTitle: 'Linkin Park - Numb (Official Music Video) [4K Upgrade]',
     videoUrl: 'https://www.youtube.com/watch?v=kXYiU_JCYtU',
     targetSeconds: 600,
     costPerView: 600,

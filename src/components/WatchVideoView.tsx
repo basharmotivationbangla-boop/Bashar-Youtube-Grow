@@ -40,7 +40,13 @@ import {
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { useAuth } from '../context/AuthContext';
 import { VideoCampaign, ViewRecord, Transaction } from '../types';
-import { getYouTubeThumbnail, formatSecondsToTime, fetchYouTubeVideoTitle } from '../utils/youtube';
+import { 
+  getYouTubeThumbnail, 
+  formatSecondsToTime, 
+  fetchYouTubeVideoTitle, 
+  fetchYouTubeVideoDetails, 
+  YouTubeVideoDetails 
+} from '../utils/youtube';
 import { INITIAL_SEED_VIDEOS } from '../data/seedCampaigns';
 import confetti from 'canvas-confetti';
 
@@ -81,7 +87,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
   const [claiming, setClaiming] = useState<boolean>(false);
   const [claimSuccessMessage, setClaimSuccessMessage] = useState<string | null>(null);
   const [watchedRecords, setWatchedRecords] = useState<Set<string>>(new Set());
-  const [resolvedTitles, setResolvedTitles] = useState<Record<string, string>>({});
+  const [videoDetailsMap, setVideoDetailsMap] = useState<Record<string, YouTubeVideoDetails>>({});
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const isAdmin = userProfile?.email === 'basharmotivationbangla@gmail.com';
@@ -169,7 +175,20 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
     return () => unsubscribe();
   }, [userProfile]);
 
-  // When active campaign changes, reset timer and resolve YouTube title if needed
+  // Fetch authentic YouTube details (exact title, channel author name) for all campaigns
+  useEffect(() => {
+    campaigns.forEach((camp) => {
+      if (camp.videoId && !videoDetailsMap[camp.videoId]) {
+        fetchYouTubeVideoDetails(camp.videoId).then((details) => {
+          if (details?.title) {
+            setVideoDetailsMap((prev) => ({ ...prev, [camp.videoId]: details }));
+          }
+        });
+      }
+    });
+  }, [campaigns]);
+
+  // When active campaign changes, reset timer and resolve YouTube details immediately
   useEffect(() => {
     if (activeCampaign) {
       setSecondsRemaining(activeCampaign.targetSeconds);
@@ -178,15 +197,15 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
       setClaimSuccessMessage(null);
       if (timerRef.current) clearInterval(timerRef.current);
 
-      if (activeCampaign.videoTitle.includes('ভিডিও #') && !resolvedTitles[activeCampaign.videoId]) {
-        fetchYouTubeVideoTitle(activeCampaign.videoId).then((realTitle) => {
-          if (realTitle && !realTitle.includes('ভিডিও #')) {
-            setResolvedTitles((prev) => ({ ...prev, [activeCampaign.videoId]: realTitle }));
+      if (activeCampaign.videoId) {
+        fetchYouTubeVideoDetails(activeCampaign.videoId).then((details) => {
+          if (details?.title) {
+            setVideoDetailsMap((prev) => ({ ...prev, [activeCampaign.videoId]: details }));
           }
         });
       }
     }
-  }, [activeCampaign]);
+  }, [activeCampaign?.id, activeCampaign?.videoId]);
 
   // Handle Timer Countdown
   useEffect(() => {
@@ -646,7 +665,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                     <iframe
                       className="w-full h-full"
                       src={`https://www.youtube.com/embed/${activeCampaign.videoId}?autoplay=1&playsinline=1&controls=1&rel=0&modestbranding=1&enablejsapi=1&origin=${encodeURIComponent(window.location.origin)}`}
-                      title={activeCampaign.videoTitle}
+                      title={videoDetailsMap[activeCampaign.videoId]?.title || activeCampaign.videoTitle}
                       allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                       allowFullScreen
                       referrerPolicy="origin-when-cross-origin"
@@ -655,75 +674,156 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                     <div className="relative w-full h-full group/thumb cursor-pointer" onClick={handleStartWatch}>
                       <img
                         src={getYouTubeThumbnail(activeCampaign.videoId)}
-                        alt={activeCampaign.videoTitle}
-                        className="w-full h-full object-cover opacity-85 group-hover/thumb:opacity-95 group-hover/thumb:scale-105 transition-all duration-700"
+                        alt={videoDetailsMap[activeCampaign.videoId]?.title || activeCampaign.videoTitle}
+                        className="w-full h-full object-cover opacity-90 group-hover/thumb:opacity-100 group-hover/thumb:scale-[1.02] transition-all duration-500"
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/40 to-black/30 flex flex-col items-center justify-center p-4">
-                        <div className="relative w-22 h-22 rounded-3xl bg-gradient-to-tr from-red-600 via-rose-600 to-red-500 flex items-center justify-center text-white shadow-2xl shadow-red-600/70 group-hover/thumb:scale-110 transition-transform duration-300 ring-4 ring-white/30">
-                          <Play className="w-10 h-10 fill-white ml-1 drop-shadow" />
-                          <div className="absolute -inset-2 rounded-3xl bg-red-500/20 blur-md pointer-events-none" />
+                      {/* Dark gradient vignette */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/30 flex flex-col items-center justify-center p-4">
+                        {/* Authentic YouTube-style Play Button */}
+                        <div className="w-18 h-13 sm:w-20 sm:h-14 rounded-2xl bg-[#FF0000] hover:bg-[#CC0000] flex items-center justify-center text-white shadow-2xl shadow-red-600/60 group-hover/thumb:scale-110 transition-transform duration-300">
+                          <Play className="w-7 h-7 sm:w-8 sm:h-8 fill-white ml-0.5" />
                         </div>
-                        <p className="mt-4 text-white font-black text-lg sm:text-xl drop-shadow-md text-center tracking-tight">
+                        <p className="mt-3.5 text-white font-bold text-sm sm:text-base drop-shadow tracking-tight">
                           ভিডিও প্লে করতে ক্লিক করুন
                         </p>
-                        <div className="mt-2.5 flex items-center gap-2 bg-gradient-to-r from-amber-400 via-orange-400 to-amber-500 text-slate-950 font-black text-xs px-4 py-1.5 rounded-full shadow-xl shadow-amber-500/20">
-                          <Coins className="w-4 h-4 text-slate-950" />
-                          <span>+{activeCampaign.targetSeconds} ক্রেডিট রিওয়ার্ড পান</span>
+                        <div className="mt-2 flex items-center gap-1.5 bg-black/70 backdrop-blur-md text-amber-300 text-xs font-semibold px-3 py-1 rounded-full border border-amber-500/30">
+                          <Coins className="w-3.5 h-3.5 text-amber-400" />
+                          <span>+{activeCampaign.targetSeconds} ক্রেডিট রিওয়ার্ড পাবেন</span>
                         </div>
                       </div>
                     </div>
                   )}
 
                   {/* Floating Modern Countdown Badge */}
-                  <div className="absolute top-4 right-4 z-20 flex items-center gap-2.5 bg-slate-950/90 backdrop-blur-md px-4 py-2 rounded-2xl border border-slate-700/80 text-white font-mono text-xs sm:text-sm font-bold shadow-2xl">
-                    <Clock className="w-4 h-4 text-amber-400 animate-spin" style={{ animationDuration: '3s' }} />
+                  <div className="absolute top-4 right-4 z-20 flex items-center gap-2 bg-slate-950/90 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-slate-700/80 text-white font-mono text-xs font-bold shadow-2xl">
+                    <Clock className="w-3.5 h-3.5 text-amber-400 animate-spin" style={{ animationDuration: '3s' }} />
                     <span className={isCompleted ? 'text-emerald-400 font-extrabold' : 'text-amber-300'}>
                       {isCompleted ? 'সময় সম্পন্ন!' : `${secondsRemaining}s বাকি`}
                     </span>
                   </div>
                 </div>
 
-                {/* Shimmering Dynamic Progress Bar */}
-                <div className="w-full bg-slate-950 h-2 relative overflow-hidden">
+                {/* YouTube Red Dynamic Progress Track */}
+                <div className="w-full bg-slate-950 h-1.5 relative overflow-hidden">
                   <div
-                    className="bg-gradient-to-r from-red-600 via-rose-500 to-amber-400 h-2 transition-all duration-1000 ease-linear shadow-lg shadow-red-500/50"
+                    className="bg-gradient-to-r from-red-600 via-rose-500 to-amber-400 h-full transition-all duration-1000 ease-linear shadow-sm"
                     style={{ width: `${progressPercent}%` }}
                   />
                 </div>
 
-                {/* Player Details & Action Controls */}
-                <div className="p-6 space-y-5">
-                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-                    <div className="space-y-2 flex-1 min-w-0">
-                      <h2 className="text-lg sm:text-2xl font-black text-white leading-snug tracking-tight">
-                        {resolvedTitles[activeCampaign.videoId] || activeCampaign.videoTitle}
-                      </h2>
-                      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
-                        <span className="flex items-center gap-1.5">
-                          <Clock className="w-3.5 h-3.5 text-amber-400" />
-                          <span>টার্গেট সময়: <strong className="text-white font-mono">{formatSecondsToTime(activeCampaign.targetSeconds)}</strong></span>
-                        </span>
-                        <span aria-hidden="true" className="text-slate-600">·</span>
-                        <span className="flex items-center gap-1.5">
-                          <Eye className="w-3.5 h-3.5 text-red-400" />
-                          <span>ভিউ অগ্রগতি: <strong className="text-white font-mono">{activeCampaign.completedViews} / {activeCampaign.targetViews}</strong></span>
-                        </span>
-                        <span aria-hidden="true" className="text-slate-600">·</span>
-                        <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-0.5 rounded-lg border border-emerald-500/20">
-                          {activeCampaign.targetViews} ভিউ পূর্ণ হলে সমাপ্ত
-                        </span>
+                {/* YouTube Title & Authentic Info Section (PLACED BELOW VIDEO AS REQUESTED) */}
+                <div className="p-5 sm:p-6 space-y-4">
+                  {/* 1. Exact YouTube Video Title */}
+                  <div>
+                    <h1 className="text-lg sm:text-xl lg:text-2xl font-bold text-white tracking-tight leading-snug line-clamp-2 select-text">
+                      {videoDetailsMap[activeCampaign.videoId]?.title || activeCampaign.videoTitle}
+                    </h1>
+                  </div>
+
+                  {/* 2. YouTube Channel Bar & Actions (Authentic YouTube Watch UI) */}
+                  <div className="flex flex-wrap items-center justify-between gap-3 pt-1 pb-3 border-b border-slate-800/80">
+                    {/* Channel Info */}
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-red-600 via-rose-600 to-amber-500 p-0.5 shadow-md shrink-0">
+                        <div className="w-full h-full rounded-full bg-slate-950 flex items-center justify-center text-white font-black text-sm uppercase">
+                          {(videoDetailsMap[activeCampaign.videoId]?.authorName || 'YT').charAt(0)}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-white text-sm sm:text-base hover:text-red-400 transition-colors">
+                            {videoDetailsMap[activeCampaign.videoId]?.authorName || 'YouTube Creator'}
+                          </span>
+                          <span title="যাচাইকৃত চ্যানেল" className="inline-flex">
+                            <CheckCircle2 className="w-4 h-4 text-sky-400 fill-sky-400/20 shrink-0" />
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 flex items-center gap-1.5">
+                          <span>YouTube অফিসিয়াল ভিডিও</span>
+                          <span aria-hidden="true">·</span>
+                          <span className="text-emerald-400 font-medium">অর্গানিক সিঙ্ক</span>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Reward Badge */}
-                    <div className="shrink-0 flex items-center gap-3 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border border-amber-500/30 px-4 py-2.5 rounded-2xl shadow-inner">
-                      <div className="w-10 h-10 rounded-xl bg-amber-400/20 flex items-center justify-center">
-                        <Coins className="w-6 h-6 text-amber-400" />
+                    {/* Action Bar (YouTube-style Action Buttons) */}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <a
+                        href={activeCampaign.videoUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-red-600/15 hover:bg-red-600/25 border border-red-500/30 text-red-300 hover:text-white transition-all cursor-pointer shadow-sm active:scale-95"
+                        title="YouTube-এ সরাসরি দেখুন ও ভিউ হিস্টোরি সিঙ্ক করুন"
+                      >
+                        <Tv className="w-3.5 h-3.5 text-red-500" />
+                        <span>YouTube-এ দেখুন</span>
+                        <ExternalLink className="w-3 h-3 text-red-400" />
+                      </a>
+
+                      <button
+                        onClick={() => handleCopyLink(activeCampaign.videoId)}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-slate-800 hover:bg-slate-700 border border-slate-700/60 text-slate-200 hover:text-white transition-all cursor-pointer active:scale-95"
+                        title="ভিডিও লিংক কপি করুন"
+                      >
+                        <Copy className="w-3.5 h-3.5 text-slate-400" />
+                        <span>কপি লিংক</span>
+                      </button>
+
+                      {/* Video Delete Option for Verified Owner or Admin */}
+                      {((userProfile?.uid && activeCampaign.userId && userProfile.uid === activeCampaign.userId) || 
+                        (userProfile?.email && activeCampaign.creatorEmail && userProfile.email === activeCampaign.creatorEmail) || 
+                        isAdmin) && (
+                        <button
+                          onClick={() => handleRequestDelete(activeCampaign)}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-medium bg-rose-500/10 hover:bg-rose-600/20 border border-rose-500/30 text-rose-400 hover:text-rose-300 transition-all cursor-pointer active:scale-95"
+                          title="এই ভিডিওটি ডিলিট করুন এবং অবিক্রীত ভিউয়ের রিফান্ড নিন"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>মুছুন</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 3. Campaign Requirements & Points Metric Strip */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800/80">
+                    {/* Watch Duration Requirement */}
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 shrink-0">
+                        <Clock className="w-4 h-4" />
                       </div>
-                      <div>
-                        <div className="text-[10px] text-amber-300/80 uppercase font-bold tracking-wider">পুরস্কার</div>
-                        <div className="text-xl font-black text-amber-300 font-mono tracking-tight">
-                          +{activeCampaign.targetSeconds} ক্রেডিট
+                      <div className="min-w-0">
+                        <div className="text-[11px] text-slate-400">নির্ধারিত ওয়াচটাইম</div>
+                        <div className="text-sm font-bold text-white font-mono">{formatSecondsToTime(activeCampaign.targetSeconds)}</div>
+                      </div>
+                    </div>
+
+                    {/* Reward Credit */}
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                        <Coins className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[11px] text-slate-400">প্রতি ভিউয়ে পুরস্কার</div>
+                        <div className="text-sm font-extrabold text-amber-300 font-mono">+{activeCampaign.targetSeconds} ক্রেডিট</div>
+                      </div>
+                    </div>
+
+                    {/* View Progress */}
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 shrink-0">
+                        <Eye className="w-4 h-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-slate-400">ভিউ অগ্রগতি</span>
+                          <span className="text-white font-mono font-bold">{activeCampaign.completedViews} / {activeCampaign.targetViews}</span>
+                        </div>
+                        <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden mt-1">
+                          <div 
+                            className="bg-gradient-to-r from-red-500 to-amber-400 h-full rounded-full transition-all duration-500"
+                            style={{ width: `${Math.min(100, (Number(activeCampaign.completedViews || 0) / Number(activeCampaign.targetViews || 1)) * 100)}%` }}
+                          />
                         </div>
                       </div>
                     </div>
@@ -731,19 +831,19 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
 
                   {/* Claim Success Notification */}
                   {claimSuccessMessage && (
-                    <div className="p-4 bg-emerald-500/20 border border-emerald-500/40 rounded-2xl flex items-center gap-3 text-emerald-300 text-xs sm:text-sm font-semibold animate-fadeIn shadow-lg">
+                    <div className="p-3.5 bg-emerald-500/20 border border-emerald-500/40 rounded-2xl flex items-center gap-3 text-emerald-300 text-xs sm:text-sm font-semibold animate-fadeIn shadow-lg">
                       <Check className="w-5 h-5 text-emerald-400 shrink-0" />
                       <span>{claimSuccessMessage}</span>
                     </div>
                   )}
 
-                  {/* Action Bar */}
-                  <div className="pt-3 border-t border-slate-800/80 flex flex-col sm:flex-row items-center gap-3">
+                  {/* 4. Watch Execution Action Bar */}
+                  <div className="pt-2">
                     {!isPlaying && !isCompleted && (
-                      <div className="w-full flex-1 flex flex-col sm:flex-row items-center gap-2.5">
+                      <div className="w-full flex flex-col sm:flex-row items-center gap-2.5">
                         <button
                           onClick={handleStartWatch}
-                          className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-500 hover:from-red-500 hover:to-rose-500 text-white font-extrabold py-4 px-6 rounded-2xl transition-all shadow-xl shadow-red-600/40 active:scale-[0.99] cursor-pointer text-sm sm:text-base"
+                          className="w-full sm:w-auto flex-1 flex items-center justify-center gap-2.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-500 hover:from-red-500 hover:to-rose-500 text-white font-extrabold py-3.5 px-6 rounded-2xl transition-all shadow-xl shadow-red-600/30 active:scale-[0.99] cursor-pointer text-sm sm:text-base"
                         >
                           <Play className="w-5 h-5 fill-white" />
                           <span>ভিডিও দেখা শুরু করুন ({activeCampaign.targetSeconds} সেকেন্ড)</span>
@@ -751,7 +851,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
 
                         <button
                           onClick={handleNextVideo}
-                          className="w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white font-bold py-4 px-5 rounded-2xl transition-colors cursor-pointer text-xs shrink-0 border border-slate-700 active:scale-95"
+                          className="w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 px-5 rounded-2xl transition-colors cursor-pointer text-xs shrink-0 border border-slate-700 active:scale-95"
                         >
                           <SkipForward className="w-4 h-4 text-amber-400" />
                           <span>পরবর্তী ভিডিও</span>
@@ -760,8 +860,8 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                     )}
 
                     {isPlaying && !isCompleted && (
-                      <div className="w-full flex items-center justify-between bg-slate-950/80 p-4 rounded-2xl border border-slate-800 text-xs sm:text-sm text-slate-200 shadow-inner">
-                        <div className="flex items-center gap-3">
+                      <div className="w-full flex items-center justify-between bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800 text-xs sm:text-sm text-slate-200 shadow-inner">
+                        <div className="flex items-center gap-2.5">
                           <span className="relative flex h-3 w-3">
                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
                             <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
@@ -769,7 +869,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                           <span className="font-semibold text-white">ভিডিও চলছে... সময় শেষ হওয়া পর্যন্ত অপেক্ষা করুন</span>
                         </div>
                         <div className="flex items-center gap-3">
-                          <span className="font-mono font-black text-amber-400 text-xl px-3 py-1 bg-amber-500/10 rounded-xl border border-amber-500/20">
+                          <span className="font-mono font-black text-amber-400 text-lg px-3 py-1 bg-amber-500/10 rounded-xl border border-amber-500/20">
                             {secondsRemaining}s
                           </span>
                           <button
@@ -786,7 +886,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                       <button
                         onClick={handleClaimCredits}
                         disabled={claiming}
-                        className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 text-white font-black py-4.5 px-6 rounded-2xl shadow-2xl shadow-emerald-600/40 transition-all text-base sm:text-lg disabled:opacity-50 cursor-pointer animate-pulse active:scale-[0.99]"
+                        className="w-full flex items-center justify-center gap-3 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 text-white font-black py-4 px-6 rounded-2xl shadow-2xl shadow-emerald-600/40 transition-all text-base sm:text-lg disabled:opacity-50 cursor-pointer animate-pulse active:scale-[0.99]"
                       >
                         {claiming ? (
                           <div className="w-6 h-6 border-3 border-white border-t-transparent rounded-full animate-spin" />
@@ -797,33 +897,6 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                             <CheckCircle className="w-6 h-6" />
                           </>
                         )}
-                      </button>
-                    )}
-
-                    {/* YouTube Direct Link with explicit History Sync label */}
-                    <a
-                      href={activeCampaign.videoUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="flex items-center gap-2 py-3.5 px-4 text-red-400 hover:text-white bg-red-600/10 hover:bg-red-600/30 rounded-2xl transition-colors border border-red-500/30 shrink-0 text-xs font-bold"
-                      title="YouTube History-তে ভিউ নিশ্চিত করতে সরাসরি YouTube-এ দেখুন"
-                    >
-                      <Tv className="w-4 h-4 text-red-500" />
-                      <span className="hidden sm:inline">YouTube History সিঙ্ক</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-
-                    {/* Delete this video button if user is verified owner or admin */}
-                    {((userProfile?.uid && activeCampaign.userId && userProfile.uid === activeCampaign.userId) || 
-                      (userProfile?.email && activeCampaign.creatorEmail && userProfile.email === activeCampaign.creatorEmail) || 
-                      isAdmin) && (
-                      <button
-                        onClick={() => handleRequestDelete(activeCampaign)}
-                        className="px-3.5 py-3 text-rose-400 hover:text-white bg-rose-500/10 hover:bg-rose-600 rounded-2xl transition-colors border border-rose-500/30 shrink-0 cursor-pointer flex items-center gap-1.5 text-xs font-bold"
-                        title="এই ভিডিওটি ডিলিট করুন এবং অবিক্রীত ভিউয়ের রিফান্ড নিন"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        <span className="hidden md:inline">ভিডিও ডিলিট</span>
                       </button>
                     )}
                   </div>
@@ -913,7 +986,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                   <div className="relative w-26 h-17 shrink-0 rounded-xl overflow-hidden bg-slate-950 ring-1 ring-slate-800">
                     <img
                       src={getYouTubeThumbnail(camp.videoId)}
-                      alt={camp.videoTitle}
+                      alt={videoDetailsMap[camp.videoId]?.title || camp.videoTitle}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />
                     <div className="absolute bottom-1 right-1 bg-black/85 text-white text-[10px] font-mono px-1.5 py-0.5 rounded-md font-bold">
@@ -943,9 +1016,13 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                             </span>
                           )}
                         </div>
-                        <h4 className="text-xs font-bold text-white truncate line-clamp-1 leading-snug mt-0.5">
-                          {resolvedTitles[camp.videoId] || camp.videoTitle}
+                        <h4 className="text-xs font-bold text-white line-clamp-2 leading-snug mt-0.5 group-hover:text-red-400 transition-colors">
+                          {videoDetailsMap[camp.videoId]?.title || camp.videoTitle}
                         </h4>
+                        <div className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
+                          <span className="truncate max-w-[120px]">{videoDetailsMap[camp.videoId]?.authorName || 'YouTube Creator'}</span>
+                          <CheckCircle2 className="w-2.5 h-2.5 text-sky-400 shrink-0" />
+                        </div>
                       </div>
 
                       {/* 3-DOTS ACTIONS MENU */}
@@ -1084,7 +1161,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
               />
               <div className="min-w-0 flex-1">
                 <h4 className="text-xs font-bold text-white truncate">
-                  {resolvedTitles[campaignToDelete.videoId] || campaignToDelete.videoTitle}
+                  {videoDetailsMap[campaignToDelete.videoId]?.title || campaignToDelete.videoTitle}
                 </h4>
                 <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1 font-mono">
                   <span>ভিউ সম্পন্ন: {campaignToDelete.completedViews}/{campaignToDelete.targetViews}</span>

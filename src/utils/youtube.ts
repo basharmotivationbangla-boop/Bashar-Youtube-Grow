@@ -50,34 +50,55 @@ export function formatSecondsToTime(seconds: number): string {
   return `${mins} মি. ${secs} সে.`;
 }
 
-// In-memory cache for fetched YouTube video titles
-const titleCache = new Map<string, string>();
+export interface YouTubeVideoDetails {
+  title: string;
+  authorName: string;
+  authorUrl?: string;
+}
+
+// In-memory cache for fetched YouTube video details
+const detailsCache = new Map<string, YouTubeVideoDetails>([
+  ['kJQP7kiw5Fk', { title: 'Luis Fonsi - Despacito ft. Daddy Yankee', authorName: 'Luis Fonsi', authorUrl: 'https://www.youtube.com/@LuisFonsi' }],
+  ['fJ9rUzIMcZQ', { title: 'Queen – Bohemian Rhapsody (Official Video Remastered)', authorName: 'Queen Official', authorUrl: 'https://www.youtube.com/@Queen' }],
+  ['JGwWNGJdvx8', { title: 'Ed Sheeran - Shape of You (Official Music Video)', authorName: 'Ed Sheeran', authorUrl: 'https://www.youtube.com/@EdSheeran' }],
+  ['9bZkp7q19f0', { title: 'PSY - GANGNAM STYLE(강남스타일) M/V', authorName: 'officialpsy', authorUrl: 'https://www.youtube.com/@officialpsy' }],
+  ['09R8_2nJtjg', { title: 'Maroon 5 - Sugar (Official Music Video)', authorName: 'Maroon 5', authorUrl: 'https://www.youtube.com/@Maroon5' }],
+  ['2Vv-BfVoq4g', { title: 'Ed Sheeran - Perfect (Official Music Video)', authorName: 'Ed Sheeran', authorUrl: 'https://www.youtube.com/@EdSheeran' }],
+  ['kXYiU_JCYtU', { title: 'Linkin Park - Numb (Official Music Video) [4K Upgrade]', authorName: 'Linkin Park', authorUrl: 'https://www.youtube.com/@LinkinPark' }],
+]);
 
 /**
- * Fetch the real YouTube video title via YouTube oEmbed API or NoEmbed fallback
+ * Fetch YouTube video details (title, channel author name) via official oEmbed or noembed
  */
-export async function fetchYouTubeVideoTitle(videoId: string): Promise<string> {
-  if (!videoId) return '';
-  if (titleCache.has(videoId)) {
-    return titleCache.get(videoId)!;
+export async function fetchYouTubeVideoDetails(videoId: string): Promise<YouTubeVideoDetails> {
+  if (!videoId) {
+    return { title: '', authorName: 'YouTube Creator' };
+  }
+
+  if (detailsCache.has(videoId)) {
+    return detailsCache.get(videoId)!;
   }
 
   const cleanUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-  // 1. Try official YouTube oEmbed endpoint (public & CORS supported)
+  // 1. Try official YouTube oEmbed endpoint (CORS enabled for web clients)
   try {
     const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(cleanUrl)}&format=json`;
     const res = await fetch(oembedUrl);
     if (res.ok) {
       const data = await res.json();
       if (data && typeof data.title === 'string' && data.title.trim().length > 0) {
-        const cleanTitle = data.title.trim().slice(0, 190);
-        titleCache.set(videoId, cleanTitle);
-        return cleanTitle;
+        const details: YouTubeVideoDetails = {
+          title: data.title.trim().slice(0, 190),
+          authorName: data.author_name ? data.author_name.trim().slice(0, 80) : 'YouTube Creator',
+          authorUrl: data.author_url || `https://www.youtube.com/watch?v=${videoId}`,
+        };
+        detailsCache.set(videoId, details);
+        return details;
       }
     }
   } catch (err) {
-    console.warn('YouTube oEmbed title fetch failed, trying fallback:', err);
+    console.warn('YouTube oEmbed fetch failed, trying fallback:', err);
   }
 
   // 2. Try noembed fallback
@@ -87,17 +108,33 @@ export async function fetchYouTubeVideoTitle(videoId: string): Promise<string> {
     if (res.ok) {
       const data = await res.json();
       if (data && typeof data.title === 'string' && data.title.trim().length > 0) {
-        const cleanTitle = data.title.trim().slice(0, 190);
-        titleCache.set(videoId, cleanTitle);
-        return cleanTitle;
+        const details: YouTubeVideoDetails = {
+          title: data.title.trim().slice(0, 190),
+          authorName: data.author_name ? data.author_name.trim().slice(0, 80) : 'YouTube Creator',
+          authorUrl: data.author_url || `https://www.youtube.com/watch?v=${videoId}`,
+        };
+        detailsCache.set(videoId, details);
+        return details;
       }
     }
   } catch (err) {
-    console.warn('Noembed title fetch failed:', err);
+    console.warn('Noembed fetch failed:', err);
   }
 
-  const fallback = `ইউটিউব ভিডিও (${videoId})`;
-  titleCache.set(videoId, fallback);
+  const fallback: YouTubeVideoDetails = {
+    title: `YouTube Video (${videoId})`,
+    authorName: 'YouTube Creator',
+  };
+  detailsCache.set(videoId, fallback);
   return fallback;
 }
+
+/**
+ * Fetch the real YouTube video title via YouTube oEmbed API or NoEmbed fallback
+ */
+export async function fetchYouTubeVideoTitle(videoId: string): Promise<string> {
+  const details = await fetchYouTubeVideoDetails(videoId);
+  return details.title;
+}
+
 
