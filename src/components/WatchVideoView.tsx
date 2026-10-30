@@ -289,6 +289,20 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
       await setDoc(viewRecordRef, newRecord);
       setWatchedRecords((prev) => new Set(prev).add(targetCamp.id));
 
+      // Also cache in local watch history for instant profile view accessibility
+      try {
+        const historyKey = `bashar_watch_history_${userProfile.uid}`;
+        const rawHistory = localStorage.getItem(historyKey);
+        const existingList = rawHistory ? JSON.parse(rawHistory) : [];
+        const updatedList = [
+          newRecord,
+          ...existingList.filter((item: any) => item.id !== recordId && item.campaignId !== targetCamp.id)
+        ].slice(0, 15);
+        localStorage.setItem(historyKey, JSON.stringify(updatedList));
+      } catch (cacheErr) {
+        console.warn('Notice saving local watch history:', cacheErr);
+      }
+
       // 2. Create Transaction Log
       const txRef = doc(db, 'transactions', `tx_${recordId}`);
       const newTx: Transaction = {

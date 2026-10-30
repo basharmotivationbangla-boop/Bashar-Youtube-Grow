@@ -19,12 +19,25 @@ import {
   ExternalLink,
   ChevronRight,
   Zap,
-  Image as ImageIcon
+  Image as ImageIcon,
+  History,
+  Play,
+  Clock,
+  RefreshCw,
+  Film,
+  PlayCircle,
+  X
 } from 'lucide-react';
-import { doc, updateDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, updateDoc, collection, query, where, getDocs, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType, logOut } from '../firebase';
 import { useAuth } from '../context/AuthContext';
-import { UserProfile } from '../types';
+import { UserProfile, ViewRecord } from '../types';
+import { 
+  getYouTubeThumbnail, 
+  formatSecondsToTime, 
+  fetchYouTubeVideoDetails, 
+  YouTubeVideoDetails 
+} from '../utils/youtube';
 import confetti from 'canvas-confetti';
 
 interface ProfileViewProps {
@@ -45,6 +58,36 @@ const PRESET_LOGOS = [
   { id: 'avatar-creator', name: 'Vlogger Icon', url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=80' }
 ];
 
+// Human-friendly Bengali relative time formatter
+function formatRelativeTimeBn(isoString: string): string {
+  try {
+    const date = new Date(isoString);
+    const now = new Date();
+    const diffSec = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    if (isNaN(diffSec) || diffSec < 0) return 'এইমাত্র';
+    if (diffSec < 60) return 'এইমাত্র';
+    if (diffSec < 3600) {
+      const mins = Math.floor(diffSec / 60);
+      return `${mins} মিনিট আগে`;
+    }
+    if (diffSec < 86400) {
+      const hours = Math.floor(diffSec / 3600);
+      return `${hours} ঘণ্টা আগে`;
+    }
+    if (diffSec < 172800) {
+      return 'গতকাল';
+    }
+    const days = Math.floor(diffSec / 86400);
+    if (days < 30) {
+      return `${days} দিন আগে`;
+    }
+    return date.toLocaleDateString('bn-BD', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return 'পূর্বে';
+  }
+}
+
 export const ProfileView: React.FC<ProfileViewProps> = ({ 
   onGoToWatch, 
   onGoToCreate,
@@ -63,6 +106,21 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   
   const [userCampaignCount, setUserCampaignCount] = useState(0);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Watch History State (Last 10 YouTube videos watched)
+  const [watchHistory, setWatchHistory] = useState<ViewRecord[]>(() => {
+    if (typeof window === 'undefined' || !userProfile?.uid) return [];
+    try {
+      const raw = localStorage.getItem(`bashar_watch_history_${userProfile.uid}`);
+      return raw ? JSON.parse(raw).slice(0, 10) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [historyLoading, setHistoryLoading] = useState<boolean>(true);
+  const [videoDetailsMap, setVideoDetailsMap] = useState<Record<string, YouTubeVideoDetails>>({});
+  const [previewVideo, setPreviewVideo] = useState<{ videoId: string; title: string; authorName: string } | null>(null);
+  const [copiedVideoId, setCopiedVideoId] = useState<string | null>(null);
 
   // Sync state if userProfile loads
   useEffect(() => {
@@ -86,6 +144,95 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     };
     fetchStats();
   }, [userProfile]);
+
+  // Real-time Watch History: Fetch and sync the last 10 watched YouTube videos
+  useEffect(() => {
+    if (!userProfile?.uid) {
+      setWatchHistory([]);
+      setHistoryLoading(false);
+      return;
+    }
+
+    setHistoryLoading(true);
+    const historyKey = `bashar_watch_history_${userProfile.uid}`;
+
+    // Query Firestore viewRecords for this user
+    const q = query(
+      collection(db, 'viewRecords'),
+      where('userId', '==', userProfile.uid)
+    );
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const records: ViewRecord[] = [];
+        snapshot.forEach((docSnap) => {
+          records.push(docSnap.data() as ViewRecord);
+        });
+
+        // Sort descending by watched timestamp
+        records.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
+        // Extract last 10 watched videos
+        const last10 = records.slice(0, 10);
+        setWatchHistory(last10);
+        setHistoryLoading(false);
+
+        // Update local cache
+        try {
+          localStorage.setItem(historyKey, JSON.stringify(last10));
+        } catch (e) {
+          // ignore storage error
+        }
+
+        // Fetch YouTube details for each video in the history
+        last10.forEach((item) => {
+          if (item.videoId && !videoDetailsMap[item.videoId]) {
+            fetchYouTubeVideoDetails(item.videoId).then((details) => {
+              if (details?.title) {
+                setVideoDetailsMap((prev) => ({
+                  ...prev,
+                  [item.videoId]: details
+                }));
+              }
+            });
+          }
+        });
+      },
+      (error) => {
+        console.warn('Notice loading view records for history:', error);
+        // Fallback to local cache
+        try {
+          const raw = localStorage.getItem(historyKey);
+          if (raw) {
+            const cached: ViewRecord[] = JSON.parse(raw).slice(0, 10);
+            setWatchHistory(cached);
+          }
+        } catch (e) {
+          // ignore
+        }
+        setHistoryLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [userProfile?.uid]);
+
+  // Fetch YouTube details for any cached items on mount
+  useEffect(() => {
+    watchHistory.forEach((item) => {
+      if (item.videoId && !videoDetailsMap[item.videoId]) {
+        fetchYouTubeVideoDetails(item.videoId).then((details) => {
+          if (details?.title) {
+            setVideoDetailsMap((prev) => ({
+              ...prev,
+              [item.videoId]: details
+            }));
+          }
+        });
+      }
+    });
+  }, [watchHistory]);
 
   if (!userProfile) {
     return (
@@ -126,7 +273,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
     reader.onload = (event) => {
       const img = new Image();
       img.onload = () => {
-        // Resize and optimize to max 256x256 square avatar
+        // Resize and optimize to max 200x200 square avatar
         const canvas = document.createElement('canvas');
         const size = Math.min(img.width, img.height);
         canvas.width = 200;
@@ -215,6 +362,26 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       setTimeout(() => setCopiedUid(false), 2500);
     }
   };
+
+  const handleCopyVideoUrl = (videoId: string) => {
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(`https://www.youtube.com/watch?v=${videoId}`);
+      setCopiedVideoId(videoId);
+      setTimeout(() => setCopiedVideoId(null), 2500);
+    }
+  };
+
+  // Total credits earned across the last 10 watched videos
+  const totalCreditsInHistory = watchHistory.reduce(
+    (acc, item) => acc + (item.creditsEarned || item.secondsWatched || 0), 
+    0
+  );
+
+  // Total seconds watched across the last 10 watched videos
+  const totalSecondsInHistory = watchHistory.reduce(
+    (acc, item) => acc + (item.secondsWatched || 0), 
+    0
+  );
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fadeIn">
@@ -326,10 +493,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               <span className="text-sm sm:text-base font-extrabold text-white font-mono">{userCampaignCount} টি</span>
             </div>
             <div className="p-3 bg-slate-950/60 rounded-2xl border border-slate-800">
-              <span className="text-[11px] text-slate-400 block">যোগদানের তারিখ</span>
-              <span className="text-xs font-semibold text-slate-300 flex items-center gap-1 mt-0.5">
-                <Calendar className="w-3.5 h-3.5 text-slate-500" />
-                <span>{userProfile.createdAt ? new Date(userProfile.createdAt).toLocaleDateString('bn-BD') : 'নতুন সদস্য'}</span>
+              <span className="text-[11px] text-slate-400 block">দেখা ভিডিও (হিস্টোরি)</span>
+              <span className="text-sm sm:text-base font-extrabold text-emerald-400 font-mono flex items-center gap-1">
+                <History className="w-4 h-4" />
+                <span>{watchHistory.length} টি</span>
               </span>
             </div>
           </div>
@@ -546,7 +713,251 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
       </div>
 
-      {/* 3. Bottom Quick Navigation Bar */}
+      {/* 3. NEW: WATCH HISTORY SECTION (সর্বশেষ দেখা ১০টি ভিডিও) */}
+      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-7 shadow-2xl space-y-6">
+        
+        {/* Watch History Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-red-600 via-rose-600 to-amber-500 p-0.5 shadow-lg shadow-red-600/20 shrink-0">
+              <div className="w-full h-full rounded-2xl bg-slate-950 flex items-center justify-center text-red-400">
+                <History className="w-5 h-5" />
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-black text-base sm:text-lg text-white tracking-tight">
+                  ওয়াচ হিস্টোরি (Watch History)
+                </h3>
+                <span className="px-2 py-0.5 rounded-full bg-red-600/20 border border-red-500/30 text-red-400 text-[10px] font-bold">
+                  সর্বশেষ ১০টি ভিডিও
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                এই প্ল্যাটফর্মের মাধ্যমে আপনার দেখা সর্বশেষ ১০টি ইউটিউব ভিডিও ও অর্জিত ক্রেডিট হিস্টোরি
+              </p>
+            </div>
+          </div>
+
+          {/* Quick Header Actions & Stats */}
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            <span className="text-xs font-mono font-bold text-slate-300 bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 flex items-center gap-1.5">
+              <Coins className="w-3.5 h-3.5 text-amber-400" />
+              <span>+{totalCreditsInHistory} ক্রেডিট অর্জিত</span>
+            </span>
+
+            <button
+              onClick={onGoToWatch}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold transition-all cursor-pointer border border-slate-700/80 active:scale-95"
+              title="নতুন ভিডিও দেখুন"
+            >
+              <Play className="w-3.5 h-3.5 fill-current text-amber-400" />
+              <span>ভিডিও দেখুন</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Watch History Content */}
+        {historyLoading && watchHistory.length === 0 ? (
+          <div className="py-12 flex flex-col items-center justify-center text-center space-y-3">
+            <div className="w-8 h-8 border-2 border-red-500 border-t-transparent rounded-full animate-spin" />
+            <p className="text-xs text-slate-400 font-medium">ওয়াচ হিস্টোরি লোড হচ্ছে...</p>
+          </div>
+        ) : watchHistory.length === 0 ? (
+          /* Empty State */
+          <div className="p-8 sm:p-12 text-center rounded-2xl bg-slate-950/60 border border-dashed border-slate-800 space-y-4">
+            <div className="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 text-slate-500 flex items-center justify-center mx-auto shadow-inner">
+              <Film className="w-8 h-8 opacity-60 text-red-400" />
+            </div>
+            <div className="space-y-1">
+              <h4 className="text-sm sm:text-base font-extrabold text-white">এখনও কোনো ভিডিও দেখা হয়নি</h4>
+              <p className="text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
+                আপনি এখনও প্ল্যাটফর্মে কোনো ভিডিও দেখেননি। ভিডিও ওয়াচ সেকশনে গিয়ে ভিডিও দেখুন এবং প্রতি সেকেন্ডের জন্য ক্রেডিট সংগ্রহ করুন। দেখা ভিডিওগুলো স্বয়ংক্রিয়ভাবে এখানে তালিকাভুক্ত হবে।
+              </p>
+            </div>
+            <button
+              onClick={onGoToWatch}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-black text-xs shadow-lg shadow-red-600/30 transition-all cursor-pointer active:scale-95"
+            >
+              <Play className="w-3.5 h-3.5 fill-white" />
+              <span>ভিডিও ওয়াচ সেকশনে যান 🎬</span>
+            </button>
+          </div>
+        ) : (
+          /* 10 Watched Videos Grid */
+          <div className="space-y-4">
+            {/* Quick summary banner */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-3 bg-slate-950/70 border border-slate-800/80 rounded-2xl text-xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-red-500/10 text-red-400 flex items-center justify-center font-bold">
+                  {watchHistory.length}
+                </div>
+                <div>
+                  <span className="text-slate-400 text-[11px] block">রেকর্ডকৃত ভিউ</span>
+                  <span className="font-bold text-white">{watchHistory.length} টি ভিডিও</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center">
+                  <Coins className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-slate-400 text-[11px] block">মোট অর্জিত পয়েন্ট</span>
+                  <span className="font-extrabold text-amber-300 font-mono">+{totalCreditsInHistory} ক্রেডিট</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-slate-400 text-[11px] block">মোট ওয়াচটাইম</span>
+                  <span className="font-bold text-white font-mono">{formatSecondsToTime(totalSecondsInHistory)}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* List of the Last 10 YouTube Videos */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              {watchHistory.map((item, index) => {
+                const details = videoDetailsMap[item.videoId];
+                const videoTitle = details?.title || `YouTube Video (${item.videoId})`;
+                const authorName = details?.authorName || 'YouTube Creator';
+                const isLatest = index === 0;
+
+                return (
+                  <div
+                    key={item.id || `${item.videoId}_${index}`}
+                    className="group relative bg-slate-950/80 hover:bg-slate-950 border border-slate-800/80 hover:border-red-500/50 rounded-2xl p-3 sm:p-3.5 transition-all shadow-md hover:shadow-red-600/10 flex flex-col justify-between gap-3"
+                  >
+                    {/* Top Row: Thumbnail & Info */}
+                    <div className="flex gap-3">
+                      {/* Video Thumbnail with duration overlay and play preview */}
+                      <div 
+                        onClick={() => setPreviewVideo({ videoId: item.videoId, title: videoTitle, authorName })}
+                        className="relative w-28 sm:w-32 aspect-video rounded-xl overflow-hidden bg-slate-900 shrink-0 cursor-pointer group/thumb"
+                        title="ভিডিওটি অ্যাপের ভেতর প্লে করুন"
+                      >
+                        <img
+                          src={getYouTubeThumbnail(item.videoId)}
+                          alt={videoTitle}
+                          className="w-full h-full object-cover group-hover/thumb:scale-105 transition-transform duration-300"
+                          loading="lazy"
+                        />
+                        {/* Dark gradient & play icon */}
+                        <div className="absolute inset-0 bg-black/35 group-hover/thumb:bg-black/10 flex items-center justify-center transition-colors">
+                          <div className="w-7 h-7 rounded-full bg-red-600/90 text-white flex items-center justify-center shadow-lg group-hover/thumb:scale-110 transition-transform">
+                            <Play className="w-3.5 h-3.5 fill-white ml-0.5" />
+                          </div>
+                        </div>
+
+                        {/* Duration badge */}
+                        <div className="absolute bottom-1 right-1 bg-black/85 text-[10px] font-mono text-white font-bold px-1.5 py-0.5 rounded">
+                          {formatSecondsToTime(item.secondsWatched)}
+                        </div>
+
+                        {/* Sequence badge */}
+                        <div className={`absolute top-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-black font-mono shadow ${
+                          isLatest 
+                            ? 'bg-red-600 text-white' 
+                            : 'bg-black/75 text-slate-300'
+                        }`}>
+                          #{index + 1}
+                        </div>
+                      </div>
+
+                      {/* Video Details */}
+                      <div className="min-w-0 flex-1 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center gap-1.5 mb-1">
+                            {isLatest && (
+                              <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-extrabold text-[9px] border border-amber-500/30 uppercase tracking-wider">
+                                সর্বশেষ
+                              </span>
+                            )}
+                            <span className="text-[10px] text-slate-400 flex items-center gap-1 font-mono">
+                              <Clock className="w-3 h-3 text-slate-500" />
+                              <span>{formatRelativeTimeBn(item.createdAt)}</span>
+                            </span>
+                          </div>
+
+                          <h4 
+                            onClick={() => setPreviewVideo({ videoId: item.videoId, title: videoTitle, authorName })}
+                            className="text-xs sm:text-sm font-bold text-white group-hover:text-red-400 transition-colors line-clamp-2 leading-snug cursor-pointer"
+                            title={videoTitle}
+                          >
+                            {videoTitle}
+                          </h4>
+
+                          <p className="text-[11px] text-slate-400 flex items-center gap-1 mt-1 truncate">
+                            <span className="truncate">{authorName}</span>
+                            <CheckCircle2 className="w-3 h-3 text-sky-400 shrink-0" />
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bottom Row: Rewards & Action Buttons */}
+                    <div className="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      {/* Reward Pills */}
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold font-mono">
+                          <Coins className="w-3 h-3" />
+                          <span>+{item.creditsEarned} ক্রেডিট</span>
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {item.secondsWatched} সে. ওয়াচটাইম
+                        </span>
+                      </div>
+
+                      {/* Action buttons */}
+                      <div className="flex items-center gap-1.5 ml-auto">
+                        <button
+                          type="button"
+                          onClick={() => handleCopyVideoUrl(item.videoId)}
+                          className="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white transition-colors cursor-pointer border border-slate-800"
+                          title="ইউটিউব ভিডিও লিংক কপি করুন"
+                        >
+                          {copiedVideoId === item.videoId ? (
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+
+                        <a
+                          href={`https://www.youtube.com/watch?v=${item.videoId}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-300 hover:text-white text-[11px] font-medium transition-colors cursor-pointer"
+                          title="সরাসরি YouTube এ খুলুন"
+                        >
+                          <ExternalLink className="w-3 h-3 text-slate-400" />
+                          <span className="hidden sm:inline">YouTube</span>
+                        </a>
+
+                        <button
+                          type="button"
+                          onClick={() => setPreviewVideo({ videoId: item.videoId, title: videoTitle, authorName })}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-red-600/15 hover:bg-red-600/30 border border-red-500/30 text-red-400 hover:text-red-300 text-[11px] font-bold transition-colors cursor-pointer"
+                          title="ভিডিওটি পুনরায় চালান"
+                        >
+                          <Play className="w-3 h-3 fill-current" />
+                          <span>প্লে করুন</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 4. Bottom Quick Navigation Bar */}
       <div className="p-6 bg-slate-900 border border-slate-800 rounded-3xl flex flex-wrap items-center justify-between gap-4 shadow-xl">
         <div>
           <h4 className="font-extrabold text-white text-sm sm:text-base">ভিডিও ক্যাম্পেইন তৈরি করতে চান?</h4>
@@ -568,6 +979,87 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </button>
         </div>
       </div>
+
+      {/* 5. CINEMA MODAL PLAYER FOR WATCH HISTORY */}
+      {previewVideo && (
+        <div 
+          onClick={() => setPreviewVideo(null)}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-fadeIn"
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="relative w-full max-w-3xl bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl overflow-hidden"
+          >
+            {/* Modal Header */}
+            <div className="p-4 bg-slate-950 border-b border-slate-800 flex items-center justify-between gap-3">
+              <div className="min-w-0 flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-red-600 flex items-center justify-center text-white shrink-0">
+                  <Play className="w-4 h-4 fill-white" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold text-white truncate">
+                    {previewVideo.title}
+                  </h3>
+                  <p className="text-[11px] text-slate-400 flex items-center gap-1 truncate">
+                    <span>{previewVideo.authorName}</span>
+                    <CheckCircle2 className="w-3 h-3 text-sky-400 shrink-0" />
+                    <span>• ওয়াচ হিস্টোরি প্লেয়ার</span>
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setPreviewVideo(null)}
+                className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Embedded YouTube Player */}
+            <div className="relative aspect-video w-full bg-black">
+              <iframe
+                src={`https://www.youtube.com/embed/${previewVideo.videoId}?autoplay=1&rel=0&modestbranding=1`}
+                title={previewVideo.title}
+                className="w-full h-full"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                allowFullScreen
+              />
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 bg-slate-950 border-t border-slate-800 flex flex-wrap items-center justify-between gap-3 text-xs">
+              <div className="text-slate-400 flex items-center gap-2">
+                <span>ভিডিও আইডি:</span>
+                <span className="font-mono text-white bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                  {previewVideo.videoId}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <a
+                  href={`https://www.youtube.com/watch?v=${previewVideo.videoId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold transition-colors cursor-pointer"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  <span>YouTube অ্যাপে খুলুন</span>
+                </a>
+
+                <button
+                  type="button"
+                  onClick={() => setPreviewVideo(null)}
+                  className="px-4 py-1.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-bold transition-all cursor-pointer"
+                >
+                  বন্ধ করুন
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );
