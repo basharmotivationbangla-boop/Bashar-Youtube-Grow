@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Play, 
+  Pause,
   Clock, 
   Coins, 
   CheckCircle, 
@@ -87,14 +88,18 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
   const [openMenuCampaignId, setOpenMenuCampaignId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Emergency Cancellation Modal State
+  const [showExitConfirmModal, setShowExitConfirmModal] = useState<boolean>(false);
+
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   const isClaimedToday = userProfile?.lastCheckInDate === todayStr;
   
-  // Timer, Tab Reference & Watching State
+  // Timer, Tab Reference & Locked Watching State
   const [secondsRemaining, setSecondsRemaining] = useState<number>(30);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
+  const [isTimerPaused, setIsTimerPaused] = useState<boolean>(false);
   const [claiming, setClaiming] = useState<boolean>(false);
   const [claimSuccessMessage, setClaimSuccessMessage] = useState<string | null>(null);
   const [earlyExitError, setEarlyExitError] = useState<string | null>(null);
@@ -106,6 +111,24 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
   const ytWindowRef = useRef<Window | null>(null);
 
   const isAdmin = userProfile?.email === 'basharmotivationbangla@gmail.com';
+
+  // PAGE VISIBILITY API: Instantly pause the reward timer if user switches tabs or minimizes the window
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        // Tab switched away or minimized: Pause timer immediately!
+        setIsTimerPaused(true);
+      } else if (document.visibilityState === 'visible') {
+        // User returned to active tab: Resume timer immediately
+        setIsTimerPaused(false);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
 
   // Fetch campaigns from Firestore (Only ACTIVE & UNCOMPLETED campaigns are published)
   useEffect(() => {
@@ -209,8 +232,10 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
       setSecondsRemaining(activeCampaign.targetSeconds);
       setIsCompleted(false);
       setIsPlaying(false);
+      setIsTimerPaused(false);
       setClaimSuccessMessage(null);
       setEarlyExitError(null);
+      setShowExitConfirmModal(false);
       if (timerRef.current) clearInterval(timerRef.current);
 
       if (activeCampaign.videoId) {
@@ -235,6 +260,8 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
       }
     }
     ytWindowRef.current = null;
+    setShowExitConfirmModal(false);
+    setIsTimerPaused(false);
 
     const availablePool = campaigns.filter(
       (c) => c.status === 'active' && (Number(c.completedViews) || 0) < Number(c.targetViews)
@@ -354,21 +381,31 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
         setCampaigns((prev) => prev.filter((c) => c.id !== targetCamp.id));
       }
 
+      // Cleanly close YouTube popup window on successful finish
+      if (ytWindowRef.current && !ytWindowRef.current.closed) {
+        try {
+          ytWindowRef.current.close();
+        } catch (e) {
+          // ignore
+        }
+      }
+      ytWindowRef.current = null;
+
       // Confetti celebration!
       confetti({
-        particleCount: 160,
-        spread: 100,
+        particleCount: 180,
+        spread: 110,
         origin: { y: 0.6 },
-        colors: ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#ec4899'],
+        colors: ['#ef4444', '#f59e0b', '#10b981', '#3b82f6', '#ec4899', '#8b5cf6'],
       });
 
       if (autoPlayNext) {
         setClaimSuccessMessage(`🎉 অভিনন্দন! YouTube ভিউ সফল। +${creditsToEarn} ক্রেডিট অ্যাকাউন্টে যোগ হয়েছে। পরবর্তী ভিডিও প্রস্তুত হচ্ছে...`);
         setTimeout(() => {
           handleNextVideo();
-        }, 1500);
+        }, 1800);
       } else {
-        setClaimSuccessMessage(`🎉 অভিনন্দন! YouTube ভিউ সফল। +${creditsToEarn} ক্রেডিট আপনার একাউন্টে যোগ হয়েছে।`);
+        setClaimSuccessMessage(`🎉 অভিনন্দন! YouTube ভিউ সফল। +${creditsToEarn} ক্রেডিট আপনার অ্যাকাউন্টে যোগ হয়েছে।`);
       }
     } catch (err: any) {
       console.warn('Notice claiming view credits:', err);
@@ -379,7 +416,20 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
     }
   };
 
-  // Prevent user from leaving the app tab without warning while watching
+  // INESCAPABLE WATCH SYSTEM 1: Browser Navigation Trap (Back Button Prevention)
+  useEffect(() => {
+    if (isPlaying && !isCompleted) {
+      window.history.pushState(null, '', window.location.href);
+      const handlePopState = () => {
+        window.history.pushState(null, '', window.location.href);
+        setToastMessage('🔒 ভিডিও দেখা সম্পূর্ণ না হওয়া পর্যন্ত বের হতে পারবেন না!');
+      };
+      window.addEventListener('popstate', handlePopState);
+      return () => window.removeEventListener('popstate', handlePopState);
+    }
+  }, [isPlaying, isCompleted]);
+
+  // INESCAPABLE WATCH SYSTEM 2: Prevent Page Reload or Tab Close
   useEffect(() => {
     if (isPlaying && !isCompleted) {
       const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -392,32 +442,29 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
     }
   }, [isPlaying, isCompleted]);
 
-  // Tab Exit & Closure Detection: Check if YouTube tab was closed or switched away
+  // INESCAPABLE WATCH SYSTEM 3: Continuous Anti-Cheat Tab Closure Heartbeat
   useEffect(() => {
-    const handleVisibilityOrFocus = () => {
+    const handleFocusCheck = () => {
       if (isPlaying && !isCompleted && ytWindowRef.current) {
         // If the user closed or deleted the YouTube tab
         if (ytWindowRef.current.closed) {
           if (timerRef.current) clearInterval(timerRef.current);
           setIsPlaying(false);
           setSecondsRemaining(activeCampaign ? activeCampaign.targetSeconds : 30);
-          setEarlyExitError('⚠️ আপনি নির্ধারিত সময়ের আগেই YouTube ট্যাবটি বন্ধ বা ডিলিট করে দিয়েছেন! ভিডিও দেখা অসম্পূর্ণ হওয়ায় কোনো ক্রেডিট দেওয়া হয়নি।');
+          setEarlyExitError('⚠️ আপনি নির্ধারিত সময়ের আগেই YouTube উইন্ডো কেটে দিয়েছেন! ভিডিও দেখা অসম্পূর্ণ হওয়ায় কোনো ক্রেডিট দেওয়া হয়নি।');
         }
       }
     };
 
-    window.addEventListener('focus', handleVisibilityOrFocus);
-    document.addEventListener('visibilitychange', handleVisibilityOrFocus);
-
+    window.addEventListener('focus', handleFocusCheck);
     return () => {
-      window.removeEventListener('focus', handleVisibilityOrFocus);
-      document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleFocusCheck);
     };
   }, [isPlaying, isCompleted, activeCampaign]);
 
-  // Handle Timer Countdown with CONTINUOUS TAB CLOSURE CHECK
+  // TIMER COUNTDOWN: Strictly controlled by isPlaying, !isTimerPaused, and active tab visibility
   useEffect(() => {
-    if (isPlaying && secondsRemaining > 0) {
+    if (isPlaying && !isTimerPaused && secondsRemaining > 0) {
       if (!userProfile) {
         setIsPlaying(false);
         openAuthModal();
@@ -425,12 +472,18 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
       }
 
       timerRef.current = setInterval(() => {
+        // Extra check using Page Visibility API directly:
+        if (document.visibilityState === 'hidden') {
+          setIsTimerPaused(true);
+          return;
+        }
+
         // Strict anti-cheat verification: Is the YouTube window still alive?
         if (ytWindowRef.current && ytWindowRef.current.closed) {
           clearInterval(timerRef.current!);
           setIsPlaying(false);
           setSecondsRemaining(activeCampaign ? activeCampaign.targetSeconds : 30);
-          setEarlyExitError('⚠️ আপনি YouTube ট্যাবটি কেটে বা ক্লোজ করে দিয়েছেন! তাই পয়েন্ট বাতিল করা হয়েছে। সম্পূর্ণ পয়েন্ট পেতে পুরো সময় YouTube-এ ভিডিওটি চালু রাখতে হবে।');
+          setEarlyExitError('⚠️ আপনি YouTube উইন্ডোটি কেটে দিয়েছেন! তাই সেশন ও পয়েন্ট বাতিল করা হয়েছে। সম্পূর্ণ পয়েন্ট পেতে পুরো সময় YouTube-এ ভিডিওটি দেখতে হবে।');
           return;
         }
 
@@ -441,13 +494,12 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
             // Final double-check: ensure YouTube tab was not closed at the last second
             if (ytWindowRef.current && ytWindowRef.current.closed) {
               setIsPlaying(false);
-              setEarlyExitError('⚠️ YouTube ট্যাবটি সময় শেষ হওয়ার আগেই বন্ধ করা হয়েছিল! কোনো পয়েন্ট দেওয়া হয়নি।');
+              setEarlyExitError('⚠️ YouTube উইন্ডোটি সময় শেষ হওয়ার আগেই বন্ধ করা হয়েছিল! কোনো পয়েন্ট দেওয়া হয়নি।');
               return 0;
             }
 
             setIsCompleted(true);
             setIsPlaying(false);
-            ytWindowRef.current = null;
 
             // Automatically claim credits the moment timer finishes!
             if (activeCampaign) {
@@ -465,9 +517,9 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
     };
-  }, [isPlaying, secondsRemaining, activeCampaign, userProfile, autoPlayNext]);
+  }, [isPlaying, isTimerPaused, secondsRemaining, activeCampaign, userProfile, autoPlayNext]);
 
-  // Start watching: Open the official YouTube tab and bind window reference
+  // Start watching: Open the official YouTube pop-up window in locked mode
   const handleStartWatch = () => {
     if (!activeCampaign) return;
     if (!userProfile) {
@@ -483,10 +535,21 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
 
     setEarlyExitError(null);
     setClaimSuccessMessage(null);
+    setShowExitConfirmModal(false);
+    setIsTimerPaused(false);
 
-    // Open YouTube video in a new dedicated tab
+    // Open dedicated YouTube Cinema Pop-up Window
     const url = `https://www.youtube.com/watch?v=${activeCampaign.videoId}`;
-    const win = window.open(url, '_blank');
+    const width = Math.min(1080, window.screen.availWidth - 40);
+    const height = Math.min(680, window.screen.availHeight - 80);
+    const left = Math.max(10, Math.floor((window.screen.availWidth - width) / 2));
+    const top = Math.max(10, Math.floor((window.screen.availHeight - height) / 2));
+    
+    const win = window.open(
+      url, 
+      'bashar_yt_watch_window', 
+      `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes`
+    );
     ytWindowRef.current = win;
 
     setIsPlaying(true);
@@ -494,20 +557,32 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
     setIsCompleted(false);
   };
 
-  // Re-focus or reopen YouTube tab if needed
+  // Re-focus or reopen YouTube pop-up window
   const handleRefocusYouTube = () => {
     if (!activeCampaign) return;
     const url = `https://www.youtube.com/watch?v=${activeCampaign.videoId}`;
     if (ytWindowRef.current && !ytWindowRef.current.closed) {
-      ytWindowRef.current.focus();
+      try {
+        ytWindowRef.current.focus();
+      } catch (e) {
+        // ignore
+      }
     } else {
-      const win = window.open(url, '_blank');
+      const width = Math.min(1080, window.screen.availWidth - 40);
+      const height = Math.min(680, window.screen.availHeight - 80);
+      const left = Math.max(10, Math.floor((window.screen.availWidth - width) / 2));
+      const top = Math.max(10, Math.floor((window.screen.availHeight - height) / 2));
+      const win = window.open(
+        url, 
+        'bashar_yt_watch_window', 
+        `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes`
+      );
       ytWindowRef.current = win;
     }
   };
 
-  // Cancel watching video
-  const handleCancelWatch = () => {
+  // User confirmed forced exit
+  const handleConfirmForcedExit = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (ytWindowRef.current && !ytWindowRef.current.closed) {
       try {
@@ -518,8 +593,10 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
     }
     ytWindowRef.current = null;
     setIsPlaying(false);
+    setIsTimerPaused(false);
+    setShowExitConfirmModal(false);
     setSecondsRemaining(activeCampaign ? activeCampaign.targetSeconds : 30);
-    setToastMessage('ভিডিও দেখা বাতিল করা হয়েছে।');
+    setEarlyExitError('⛔ আপনি সেশন থেকে জোরপূর্বক বের হয়ে গেছেন! কোনো ক্রেডিট যোগ করা হয়নি।');
   };
 
   // Copy link helper
@@ -629,7 +706,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
     }
   };
 
-  // Filtered campaigns (Guaranteed: strictly exclude any completed video)
+  // Filtered campaigns
   const filteredCampaigns = campaigns.filter((c) => {
     if (c.status !== 'active' || (Number(c.completedViews) || 0) >= Number(c.targetViews)) return false;
     if (selectedDurationFilter === 'all') return true;
@@ -670,9 +747,13 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   <span>পাবলিক ভিউ বৃদ্ধি নিশ্চয়তা</span>
                 </span>
+                <span className="flex items-center gap-1 text-[11px] font-bold text-amber-300 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Page Visibility ট্র্যাকার সক্রিয়</span>
+                </span>
               </div>
               <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                ভিডিও সরাসরি <strong className="text-white font-bold">YouTube</strong>-এ খুলে দেখা হয়, যাতে ইউটিউবের অ্যালগরিদম ভিডিওটির ভিউ ও ওয়াচটাইম সরাসরি চ্যানেলে যুক্ত করে।
+                সক্রিয়ভাবে ভিডিও দেখতে হবে। অন্য ট্যাবে গেলে বা মিনিমাইজ করলে <strong className="text-amber-400 font-bold">Page Visibility API</strong> সাথে সাথে টাইমার পজ করে দেবে।
               </p>
             </div>
           </div>
@@ -688,7 +769,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                 <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                 <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" />
               </span>
-              <span className="text-xs font-bold text-emerald-400 font-mono">অ্যান্টি-চিট সুরক্ষা সক্রিয়</span>
+              <span className="text-xs font-bold text-emerald-400 font-mono">অ্যাক্টিভ ভিউ ট্র্যাকিং</span>
             </div>
           </div>
         </div>
@@ -737,7 +818,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
             </div>
           </div>
           <p className="text-[11px] text-slate-400 mt-3 relative z-10">
-            শতভাগ নির্ভুল ট্র্যাকিং: ভিডিও পুরো সময় শেষ হলেই ক্রেডিট জমা হয়
+            শতভাগ সক্রিয় ট্র্যাকিং: সক্রিয়ভাবে ভিডিও পুরো সময় দেখলেই ক্রেডিট জমা হয়
           </p>
         </div>
 
@@ -816,7 +897,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
                       <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
                     </span>
-                    <span className="font-bold">YouTube সরাসরি সংযোগ ও ট্যাব সুরক্ষা সক্রিয়</span>
+                    <span className="font-bold">YouTube সরাসরি সংযোগ ও Page Visibility সক্রিয়</span>
                   </div>
 
                   <div className="flex items-center gap-2.5 ml-auto">
@@ -855,190 +936,94 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                   </div>
                 </div>
 
-                {/* Cinema Visual Showcase Frame */}
+                {/* Pre-Watch Cinema Visual Showcase Frame */}
                 <div className="relative aspect-video w-full bg-slate-950 flex items-center justify-center overflow-hidden">
-                  {isPlaying ? (
-                    /* WATCHING STATE: High-Tech YouTube Organic Verification Radar Dashboard (NO IN-APP EMBED PLAYER) */
-                    <div className="relative w-full h-full flex flex-col items-center justify-center p-6 bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 overflow-hidden select-none">
-                      {/* Ambient background thumbnail blurred */}
-                      <img
-                        src={getYouTubeThumbnail(activeCampaign.videoId)}
-                        alt=""
-                        className="absolute inset-0 w-full h-full object-cover opacity-15 blur-xl pointer-events-none scale-110"
-                      />
+                  <div className="relative w-full h-full group/thumb flex flex-col justify-between p-5 sm:p-6 overflow-hidden">
+                    <img
+                      src={getYouTubeThumbnail(activeCampaign.videoId)}
+                      alt={videoDetailsMap[activeCampaign.videoId]?.title || activeCampaign.videoTitle}
+                      className="absolute inset-0 w-full h-full object-cover opacity-85 group-hover/thumb:opacity-95 group-hover/thumb:scale-[1.03] transition-all duration-700"
+                    />
+                    {/* Dark cinema gradient vignette */}
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-black/50" />
 
-                      {/* Radar pulses behind circular timer */}
-                      <div className="absolute w-56 h-56 rounded-full border border-red-500/20 animate-ping pointer-events-none opacity-40" />
-                      <div className="absolute w-40 h-40 rounded-full border border-amber-500/20 pointer-events-none" />
-
-                      <div className="relative z-10 flex flex-col items-center text-center space-y-4 max-w-lg">
-                        {/* Live YouTube Status Pill */}
-                        <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-red-600/20 border border-red-500/40 text-red-300 text-xs font-bold shadow-lg animate-pulse">
-                          <Radio className="w-4 h-4 text-red-400" />
-                          <span>YouTube ট্যাবে ভিডিও চলছে • অর্গানিক ভিউ কাউন্ট সক্রিয়</span>
-                        </div>
-
-                        {/* Circular Digital Countdown Ring */}
-                        <div className="relative flex items-center justify-center">
-                          <svg className="w-32 h-32 sm:w-36 sm:h-36 transform -rotate-90">
-                            <circle
-                              cx="50%"
-                              cy="50%"
-                              r="58"
-                              className="stroke-slate-800"
-                              strokeWidth="8"
-                              fill="transparent"
-                            />
-                            <circle
-                              cx="50%"
-                              cy="50%"
-                              r="58"
-                              className="stroke-red-500 transition-all duration-1000 ease-linear"
-                              strokeWidth="8"
-                              strokeDasharray={364}
-                              strokeDashoffset={364 - (364 * progressPercent) / 100}
-                              strokeLinecap="round"
-                              fill="transparent"
-                            />
-                          </svg>
-                          <div className="absolute flex flex-col items-center justify-center">
-                            <span className="text-3xl sm:text-4xl font-black text-white font-mono tracking-tight">
-                              {secondsRemaining}s
-                            </span>
-                            <span className="text-[10px] text-amber-300 font-bold uppercase tracking-wider">
-                              বাকি আছে
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Strict Tab Closure Warning & Actions */}
-                        <div className="space-y-2.5">
-                          <div className="p-3 bg-red-950/60 border border-red-500/40 rounded-2xl text-xs text-red-200 flex items-center gap-2.5 text-left max-w-md">
-                            <ShieldAlert className="w-5 h-5 text-red-400 shrink-0" />
-                            <span className="leading-relaxed">
-                              <strong>কঠোর নিয়ম:</strong> YouTube ট্যাবটি কেটে বা ক্লোজ করে দিলে সাথে সাথে টাইমার বন্ধ হবে এবং <strong>কোনো ক্রেডিট দেওয়া হবে না</strong>।
-                            </span>
-                          </div>
-
-                          <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
-                            <button
-                              onClick={handleRefocusYouTube}
-                              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-black text-xs shadow-lg shadow-red-600/30 transition-all cursor-pointer active:scale-95"
-                            >
-                              <Tv className="w-4 h-4" />
-                              <span>YouTube ট্যাবে যান / ফোকাস করুন</span>
-                              <ExternalLink className="w-3 h-3" />
-                            </button>
-
-                            <button
-                              onClick={handleCancelWatch}
-                              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/80 text-xs font-semibold cursor-pointer transition-colors"
-                            >
-                              <X className="w-3.5 h-3.5 text-slate-400" />
-                              <span>বাতিল করুন</span>
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  ) : (
-                    /* PRE-WATCH STATE: YouTube Launch Screen with High-Res Thumbnail */
-                    <div className="relative w-full h-full group/thumb flex flex-col justify-between p-5 sm:p-6 overflow-hidden">
-                      <img
-                        src={getYouTubeThumbnail(activeCampaign.videoId)}
-                        alt={videoDetailsMap[activeCampaign.videoId]?.title || activeCampaign.videoTitle}
-                        className="absolute inset-0 w-full h-full object-cover opacity-85 group-hover/thumb:opacity-95 group-hover/thumb:scale-[1.03] transition-all duration-700"
-                      />
-                      {/* Dark cinema gradient vignette */}
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-black/50" />
-
-                      {/* Top Badges */}
-                      <div className="relative z-10 flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="flex items-center gap-1.5 bg-[#FF0000] text-white text-[11px] font-black px-2.5 py-1 rounded-lg shadow-md uppercase tracking-wider">
-                            <Play className="w-3.5 h-3.5 fill-white" />
-                            YouTube
-                          </span>
-                          <span className="bg-black/80 backdrop-blur-md text-amber-300 border border-amber-500/30 text-[11px] font-bold px-2.5 py-1 rounded-lg shadow-md font-mono flex items-center gap-1">
-                            <Clock className="w-3 h-3 text-amber-400" />
-                            {activeCampaign.targetSeconds} সেকেন্ড
-                          </span>
-                        </div>
-
-                        <div className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 backdrop-blur-md text-[11px] font-black px-3 py-1 rounded-lg flex items-center gap-1 shadow-md font-mono">
-                          <Coins className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>+{activeCampaign.targetSeconds} ক্রেডিট রিওয়ার্ড</span>
-                        </div>
-                      </div>
-
-                      {/* Center Giant YouTube Launch Button */}
-                      <div className="relative z-10 flex flex-col items-center justify-center my-auto py-4 text-center">
-                        {!userProfile ? (
-                          <div 
-                            onClick={openAuthModal}
-                            className="cursor-pointer group/lock flex flex-col items-center"
-                          >
-                            <div className="w-18 h-18 sm:w-20 sm:h-20 rounded-3xl bg-gradient-to-tr from-amber-500 to-red-600 flex items-center justify-center text-white shadow-2xl shadow-red-600/50 group-hover/lock:scale-110 transition-transform duration-300">
-                              <Lock className="w-8 h-8 sm:w-9 sm:h-9" />
-                            </div>
-                            <p className="mt-3 text-white font-black text-sm sm:text-base drop-shadow tracking-tight">
-                              ক্রেডিট সংগ্রহ করতে Log in / Sign up করুন
-                            </p>
-                            <div className="mt-1 flex items-center gap-1.5 bg-red-600/90 text-white text-[11px] font-bold px-3 py-0.5 rounded-full border border-red-400/40 shadow">
-                              <AlertCircle className="w-3 h-3" />
-                              <span>লগইন ছাড়া কেউ ক্রেডিট পাবে না</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <button
-                            onClick={handleStartWatch}
-                            className="group/ytbtn flex flex-col items-center cursor-pointer select-none border-none bg-transparent"
-                            title="YouTube-এ সরাসরি দেখুন এবং ভিউ বৃদ্ধি করুন"
-                          >
-                            {/* YouTube Play Icon with pulsating glow */}
-                            <div className="relative flex items-center justify-center">
-                              <div className="absolute -inset-3 bg-red-600/50 rounded-full blur-xl group-hover/ytbtn:bg-red-600/75 transition-all" />
-                              <div className="relative w-20 h-15 sm:w-24 sm:h-17 rounded-2xl bg-[#FF0000] group-hover/ytbtn:bg-[#E60000] flex items-center justify-center text-white shadow-2xl shadow-red-600/60 group-hover/ytbtn:scale-110 transition-transform duration-300">
-                                <Play className="w-8 h-8 sm:w-10 sm:h-10 fill-white ml-0.5" />
-                              </div>
-                            </div>
-                            
-                            <div className="mt-3.5 px-4 py-2 rounded-2xl bg-black/80 backdrop-blur-md border border-white/10 group-hover/ytbtn:border-red-500/50 transition-all shadow-xl">
-                              <div className="text-white font-black text-sm sm:text-base flex items-center gap-2">
-                                <span>YouTube-এ সরাসরি দেখুন ও ভিউ বাড়ান</span>
-                                <ExternalLink className="w-4 h-4 text-red-400 group-hover/ytbtn:translate-x-0.5 transition-transform" />
-                              </div>
-                              <div className="text-[11px] text-amber-300 font-bold flex items-center justify-center gap-1 mt-0.5 font-mono">
-                                <Coins className="w-3.5 h-3.5 text-amber-400" />
-                                <span>+{activeCampaign.targetSeconds} ক্রেডিট আপনার ব্যালেন্সে যোগ হবে</span>
-                              </div>
-                            </div>
-                          </button>
-                        )}
-                      </div>
-
-                      {/* Bottom Quick Feature Notice */}
-                      <div className="relative z-10 flex items-center justify-between text-[11px] text-slate-300 bg-black/60 backdrop-blur-md p-2.5 rounded-xl border border-white/10">
-                        <span className="flex items-center gap-1.5">
-                          <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
-                          <span>ইউটিউব চ্যানেল গ্রোথ অ্যালগরিদম সক্রিয়</span>
+                    {/* Top Badges */}
+                    <div className="relative z-10 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="flex items-center gap-1.5 bg-[#FF0000] text-white text-[11px] font-black px-2.5 py-1 rounded-lg shadow-md uppercase tracking-wider">
+                          <Play className="w-3.5 h-3.5 fill-white" />
+                          YouTube
                         </span>
-                        <span className="text-slate-400 font-mono">
-                          ভিউ অগ্রগতি: {activeCampaign.completedViews}/{activeCampaign.targetViews}
+                        <span className="bg-black/80 backdrop-blur-md text-amber-300 border border-amber-500/30 text-[11px] font-bold px-2.5 py-1 rounded-lg shadow-md font-mono flex items-center gap-1">
+                          <Clock className="w-3 h-3 text-amber-400" />
+                          {activeCampaign.targetSeconds} সেকেন্ড
                         </span>
                       </div>
-                    </div>
-                  )}
 
-                  {/* Floating Modern Countdown Badge (When playing) */}
-                  {isPlaying && (
-                    <div className="absolute top-4 right-4 z-20 flex items-center gap-2 bg-slate-950/90 backdrop-blur-md px-3.5 py-1.5 rounded-xl border border-slate-700/80 text-white font-mono text-xs font-bold shadow-2xl">
-                      <Clock className="w-3.5 h-3.5 text-amber-400 animate-spin" style={{ animationDuration: '3s' }} />
-                      <span className={isCompleted ? 'text-emerald-400 font-extrabold' : 'text-amber-300'}>
-                        {isCompleted ? 'সময় সম্পন্ন!' : `${secondsRemaining}s বাকি`}
+                      <div className="bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 backdrop-blur-md text-[11px] font-black px-3 py-1 rounded-lg flex items-center gap-1 shadow-md font-mono">
+                        <Coins className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>+{activeCampaign.targetSeconds} ক্রেডিট রিওয়ার্ড</span>
+                      </div>
+                    </div>
+
+                    {/* Center Giant YouTube Launch Button */}
+                    <div className="relative z-10 flex flex-col items-center justify-center my-auto py-4 text-center">
+                      {!userProfile ? (
+                        <div 
+                          onClick={openAuthModal}
+                          className="cursor-pointer group/lock flex flex-col items-center"
+                        >
+                          <div className="w-18 h-18 sm:w-20 sm:h-20 rounded-3xl bg-gradient-to-tr from-amber-500 to-red-600 flex items-center justify-center text-white shadow-2xl shadow-red-600/50 group-hover/lock:scale-110 transition-transform duration-300">
+                            <Lock className="w-8 h-8 sm:w-9 sm:h-9" />
+                          </div>
+                          <p className="mt-3 text-white font-black text-sm sm:text-base drop-shadow tracking-tight">
+                            ক্রেডিট সংগ্রহ করতে Log in / Sign up করুন
+                          </p>
+                          <div className="mt-1 flex items-center gap-1.5 bg-red-600/90 text-white text-[11px] font-bold px-3 py-0.5 rounded-full border border-red-400/40 shadow">
+                            <AlertCircle className="w-3 h-3" />
+                            <span>লগইন ছাড়া কেউ ক্রেডিট পাবে না</span>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={handleStartWatch}
+                          className="group/ytbtn flex flex-col items-center cursor-pointer select-none border-none bg-transparent"
+                          title="YouTube-এ সরাসরি দেখুন এবং ভিউ বৃদ্ধি করুন"
+                        >
+                          {/* YouTube Play Icon with pulsating glow */}
+                          <div className="relative flex items-center justify-center">
+                            <div className="absolute -inset-3 bg-red-600/50 rounded-full blur-xl group-hover/ytbtn:bg-red-600/75 transition-all" />
+                            <div className="relative w-20 h-15 sm:w-24 sm:h-17 rounded-2xl bg-[#FF0000] group-hover/ytbtn:bg-[#E60000] flex items-center justify-center text-white shadow-2xl shadow-red-600/60 group-hover/ytbtn:scale-110 transition-transform duration-300">
+                              <Play className="w-8 h-8 sm:w-10 sm:h-10 fill-white ml-0.5" />
+                            </div>
+                          </div>
+                          
+                          <div className="mt-3.5 px-5 py-2.5 rounded-2xl bg-black/85 backdrop-blur-md border border-white/10 group-hover/ytbtn:border-red-500/50 transition-all shadow-xl">
+                            <div className="text-white font-black text-sm sm:text-base flex items-center gap-2">
+                              <Lock className="w-4 h-4 text-amber-400" />
+                              <span>YouTube-এ দেখুন ও ভিউ বাড়ান (লকড মোড)</span>
+                              <ExternalLink className="w-4 h-4 text-red-400 group-hover/ytbtn:translate-x-0.5 transition-transform" />
+                            </div>
+                            <div className="text-[11px] text-amber-300 font-bold flex items-center justify-center gap-1 mt-0.5 font-mono">
+                              <Coins className="w-3.5 h-3.5 text-amber-400" />
+                              <span>+{activeCampaign.targetSeconds} ক্রেডিট রিওয়ার্ড যোগ হবে</span>
+                            </div>
+                          </div>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Bottom Quick Feature Notice */}
+                    <div className="relative z-10 flex items-center justify-between text-[11px] text-slate-300 bg-black/60 backdrop-blur-md p-2.5 rounded-xl border border-white/10">
+                      <span className="flex items-center gap-1.5">
+                        <TrendingUp className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>ইউটিউব চ্যানেল গ্রোথ অ্যালগরিদম সক্রিয়</span>
+                      </span>
+                      <span className="text-slate-400 font-mono">
+                        ভিউ অগ্রগতি: {activeCampaign.completedViews}/{activeCampaign.targetViews}
                       </span>
                     </div>
-                  )}
+                  </div>
                 </div>
 
                 {/* Dynamic YouTube Progress Track */}
@@ -1060,7 +1045,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                         </div>
                         <div>
                           <div className="font-black text-rose-200 text-sm sm:text-base">
-                            ভিউ অসম্পূর্ণ: YouTube ট্যাব আগে কেটে দেওয়া হয়েছে!
+                            ভিউ অসম্পূর্ণ: YouTube উইন্ডো আগে কেটে দেওয়া হয়েছে!
                           </div>
                           <div className="text-xs text-rose-300/90 font-medium mt-0.5 leading-relaxed">
                             {earlyExitError}
@@ -1125,8 +1110,8 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                         className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#FF0000] hover:bg-[#CC0000] text-white transition-all cursor-pointer shadow-md shadow-red-600/30 active:scale-95"
                         title="YouTube-এ সরাসরি দেখুন ও ভিউ হিস্টোরি সিঙ্ক করুন"
                       >
-                        <Tv className="w-3.5 h-3.5 text-white" />
-                        <span>YouTube-এ দেখুন</span>
+                        <Lock className="w-3.5 h-3.5 text-white" />
+                        <span>লকড মোডে দেখুন</span>
                         <ExternalLink className="w-3 h-3 text-white/80" />
                       </button>
 
@@ -1229,108 +1214,24 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
                         </button>
                       </div>
                     ) : (
-                      <>
-                        {!isPlaying && !isCompleted && (
-                          <div className="w-full flex flex-col sm:flex-row items-center gap-3">
-                            <button
-                              onClick={handleStartWatch}
-                              className="w-full sm:w-auto flex-1 flex items-center justify-center gap-3 bg-gradient-to-r from-red-600 via-rose-600 to-red-500 hover:from-red-500 hover:to-rose-500 text-white font-black py-4 px-6 rounded-2xl transition-all shadow-xl shadow-red-600/30 active:scale-[0.99] cursor-pointer text-sm sm:text-base select-none"
-                            >
-                              <Play className="w-5 h-5 fill-white" />
-                              <span>YouTube-এ দেখুন ও পয়েন্ট নিন ({activeCampaign.targetSeconds} সেকেন্ড)</span>
-                              <ExternalLink className="w-4 h-4 text-white/80" />
-                            </button>
+                      <div className="w-full flex flex-col sm:flex-row items-center gap-3">
+                        <button
+                          onClick={handleStartWatch}
+                          className="w-full sm:w-auto flex-1 flex items-center justify-center gap-3 bg-gradient-to-r from-red-600 via-rose-600 to-red-500 hover:from-red-500 hover:to-rose-500 text-white font-black py-4 px-6 rounded-2xl transition-all shadow-xl shadow-red-600/30 active:scale-[0.99] cursor-pointer text-sm sm:text-base select-none"
+                        >
+                          <Lock className="w-5 h-5" />
+                          <span>লকড মোডে YouTube ভিডিও দেখুন ও পয়েন্ট নিন ({activeCampaign.targetSeconds} সেকেন্ড)</span>
+                          <ExternalLink className="w-4 h-4 text-white/80" />
+                        </button>
 
-                            <button
-                              onClick={handleNextVideo}
-                              className="w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white font-bold py-4 px-5 rounded-2xl transition-colors cursor-pointer text-xs shrink-0 border border-slate-700 active:scale-95"
-                            >
-                              <SkipForward className="w-4 h-4 text-amber-400" />
-                              <span>পরবর্তী ভিডিও</span>
-                            </button>
-                          </div>
-                        )}
-
-                        {isPlaying && !isCompleted && (
-                          <div className="w-full flex flex-col sm:flex-row items-center justify-between bg-slate-950/80 p-4 rounded-2xl border border-slate-800 text-xs sm:text-sm text-slate-200 shadow-inner gap-3">
-                            <div className="flex items-center gap-2.5">
-                              <span className="relative flex h-3 w-3">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                                <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
-                              </span>
-                              <div>
-                                <span className="font-bold text-white">YouTube-এ ভিডিও চলছে</span>
-                                <span className="text-slate-400 text-xs block sm:inline sm:ml-2">
-                                  ট্যাব কেটে দিলে পয়েন্ট পাবেন না। সময় শেষ হলে ক্রেডিট যোগ হবে।
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-                              <span className="font-mono font-black text-amber-400 text-lg px-3.5 py-1 bg-amber-500/10 rounded-xl border border-amber-500/20">
-                                {secondsRemaining}s
-                              </span>
-                              <button
-                                onClick={handleCancelWatch}
-                                className="text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white px-3.5 py-2 rounded-xl transition-colors cursor-pointer border border-slate-700 active:scale-95"
-                              >
-                                বাতিল ✕
-                              </button>
-                            </div>
-                          </div>
-                        )}
-
-                        {isCompleted && (
-                          <div className="w-full space-y-3">
-                            {autoPlayNext ? (
-                              <div className="w-full p-4 rounded-2xl bg-gradient-to-r from-emerald-950/80 via-slate-900 to-teal-950/80 border border-emerald-500/40 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-xl">
-                                <div className="flex items-center gap-3">
-                                  <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-300 shrink-0">
-                                    <Check className="w-5 h-5 text-emerald-400" />
-                                  </div>
-                                  <div>
-                                    <p className="font-extrabold text-sm sm:text-base text-white">
-                                      +{activeCampaign.targetSeconds} ক্রেডিট অটোমেটিক যোগ হয়েছে!
-                                    </p>
-                                    <p className="text-xs text-emerald-400">
-                                      অটো-নেক্সট সক্রিয়: পরবর্তী ভিডিও প্রস্তুত করা হচ্ছে...
-                                    </p>
-                                  </div>
-                                </div>
-                                <button
-                                  onClick={handleNextVideo}
-                                  className="w-full sm:w-auto px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xs rounded-xl transition-all cursor-pointer shadow-md active:scale-95 shrink-0"
-                                >
-                                  পরবর্তী ভিডিও ⏭
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="w-full space-y-3">
-                                <div className="p-4 rounded-2xl bg-emerald-950/50 border border-emerald-500/40 flex items-center justify-between gap-3 text-emerald-300 text-xs sm:text-sm font-semibold shadow-lg">
-                                  <div className="flex items-center gap-2.5">
-                                    <Check className="w-5 h-5 text-emerald-400 shrink-0" />
-                                    <span>
-                                      +{activeCampaign.targetSeconds} ক্রেডিট অটোমেটিক একাউন্টে যোগ হয়েছে!
-                                    </span>
-                                  </div>
-                                  <span className="font-mono text-xs bg-emerald-500/20 px-2 py-0.5 rounded-md text-emerald-300 shrink-0 font-bold">
-                                    জমা হয়েছে
-                                  </span>
-                                </div>
-
-                                <button
-                                  onClick={handleNextVideo}
-                                  className="w-full flex items-center justify-center gap-2.5 bg-gradient-to-r from-red-600 via-rose-600 to-red-500 hover:from-red-500 hover:to-rose-500 text-white font-black py-4 px-6 rounded-2xl transition-all shadow-xl shadow-red-600/30 active:scale-[0.99] cursor-pointer text-sm sm:text-base"
-                                >
-                                  <Play className="w-5 h-5 fill-white" />
-                                  <span>পরবর্তী ভিডিও দেখুন (Next Video)</span>
-                                  <SkipForward className="w-4 h-4 text-amber-300 ml-1" />
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </>
+                        <button
+                          onClick={handleNextVideo}
+                          className="w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-white font-bold py-4 px-5 rounded-2xl transition-colors cursor-pointer text-xs shrink-0 border border-slate-700 active:scale-95"
+                        >
+                          <SkipForward className="w-4 h-4 text-amber-400" />
+                          <span>পরবর্তী ভিডিও</span>
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -1557,6 +1458,227 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ========================================================================= */}
+      {/* 🔒 INESCAPABLE FULLSCREEN CINEMA WATCH OVERLAY (WITH PAGE VISIBILITY API) */}
+      {/* ========================================================================= */}
+      {isPlaying && activeCampaign && (
+        <div className="fixed inset-0 z-50 bg-slate-950/98 backdrop-blur-3xl flex flex-col justify-between p-4 sm:p-8 animate-fadeIn select-none overflow-y-auto">
+          {/* Ambient Cyberpunk Glow Behind Cinema Screen */}
+          <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-red-600/20 rounded-full blur-[140px] pointer-events-none" />
+          <div className="absolute bottom-10 left-1/4 w-72 h-72 bg-amber-500/15 rounded-full blur-[120px] pointer-events-none" />
+
+          {/* Top Status Header */}
+          <div className="relative z-10 max-w-5xl mx-auto w-full flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800/80">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-red-600/20 border border-red-500/40 flex items-center justify-center text-red-400 shadow-lg shadow-red-600/20">
+                <Lock className="w-5 h-5 text-red-400 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-black text-white text-sm sm:text-base tracking-tight">
+                    ইউটিউব ওয়াচ সেশন সম্পূর্ণ লকড
+                  </span>
+                  <span className="text-[10px] bg-red-600 text-white font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider shadow">
+                    LOCKED
+                  </span>
+                </div>
+                <p className="text-xs text-amber-300/90 font-medium">
+                  {isTimerPaused 
+                    ? 'ট্যাব সুইচ বা মিনিমাইজ সনাক্ত হয়েছে! টাইমার পজ করা হয়েছে।' 
+                    : 'সক্রিয়ভাবে ভিডিও দেখুন। ট্যাব পরিবর্তন বা মিনিমাইজ করলে টাইমার স্বয়ংক্রিয়ভাবে পজ হবে।'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {isTimerPaused ? (
+                <span className="flex items-center gap-1.5 text-xs font-mono font-black text-amber-300 bg-amber-500/20 border border-amber-500/40 px-3 py-1 rounded-xl animate-pulse">
+                  <Pause className="w-3.5 h-3.5 text-amber-400" />
+                  <span>টাইমার পজড (PAUSED)</span>
+                </span>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" />
+                  </span>
+                  <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-xl">
+                    সক্রিয় দেখা হচ্ছে • ট্র্যাকিং রানিং
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Center Immersive Monitoring Core */}
+          <div className="relative z-10 max-w-xl mx-auto w-full my-auto py-6 flex flex-col items-center text-center space-y-6">
+            
+            {/* Page Visibility API Alert Banner when paused */}
+            {isTimerPaused && (
+              <div className="w-full p-4 rounded-2xl bg-amber-500/20 border border-amber-500/50 text-amber-200 flex items-center gap-3 text-left shadow-xl animate-bounce">
+                <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+                <div className="text-xs sm:text-sm font-bold leading-snug">
+                  <span>সতর্কতা: আপনি ট্যাব পরিবর্তন বা মিনিমাইজ করেছেন!</span>
+                  <span className="block text-[11px] font-normal text-amber-300/90 mt-0.5">
+                    পুরো ক্রেডিট পেতে ভিডিওটি সক্রিয়ভাবে দেখতে হবে। পেইজে ফিরে আসা মাত্র টাইমার পুনরায় চলবে।
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Pulsating Circular Countdown Gauge */}
+            <div className="relative flex items-center justify-center">
+              {/* Outer Pulsing Glow Wave */}
+              <div className={`absolute w-56 h-56 sm:w-64 sm:h-64 rounded-full border pointer-events-none opacity-40 ${isTimerPaused ? 'border-amber-500/30' : 'border-red-500/25 animate-ping'}`} />
+              <div className={`absolute w-44 h-44 sm:w-52 sm:h-52 rounded-full border pointer-events-none ${isTimerPaused ? 'border-amber-500/40' : 'border-amber-500/20'}`} />
+
+              <svg className="w-44 h-44 sm:w-52 sm:h-52 transform -rotate-90">
+                <circle
+                  cx="50%"
+                  cy="50%"
+                  r="80"
+                  className="stroke-slate-800"
+                  strokeWidth="10"
+                  fill="transparent"
+                />
+                <circle
+                  cx="50%"
+                  cy="50%"
+                  r="80"
+                  className={`transition-all duration-1000 ease-linear ${isTimerPaused ? 'stroke-amber-400' : 'stroke-red-500'}`}
+                  strokeWidth="10"
+                  strokeDasharray={502}
+                  strokeDashoffset={502 - (502 * progressPercent) / 100}
+                  strokeLinecap="round"
+                  fill="transparent"
+                />
+              </svg>
+
+              <div className="absolute flex flex-col items-center justify-center select-none">
+                <span className={`text-4xl sm:text-5xl font-black font-mono tracking-tight drop-shadow-lg ${isTimerPaused ? 'text-amber-400 animate-pulse' : 'text-white'}`}>
+                  {secondsRemaining}s
+                </span>
+                <span className="text-xs text-amber-300 font-extrabold uppercase tracking-widest mt-1 flex items-center gap-1">
+                  {isTimerPaused ? (
+                    <>
+                      <Pause className="w-3 h-3 text-amber-400" />
+                      <span>পজড (PAUSED)</span>
+                    </>
+                  ) : (
+                    <span>নির্ধারিত সময় বাকি</span>
+                  )}
+                </span>
+              </div>
+            </div>
+
+            {/* Video Summary Capsule */}
+            <div className="w-full bg-slate-900/90 border border-slate-800 p-4 rounded-3xl shadow-2xl flex items-center gap-3.5 text-left">
+              <img
+                src={getYouTubeThumbnail(activeCampaign.videoId)}
+                alt=""
+                className="w-20 h-14 rounded-2xl object-cover shrink-0 ring-1 ring-slate-700 shadow-md"
+              />
+              <div className="min-w-0 flex-1">
+                <h4 className="text-xs sm:text-sm font-bold text-white truncate">
+                  {videoDetailsMap[activeCampaign.videoId]?.title || activeCampaign.videoTitle}
+                </h4>
+                <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1">
+                  <span className="text-amber-400 font-extrabold font-mono">+{activeCampaign.targetSeconds} ক্রেডিট রিওয়ার্ড</span>
+                  <span>•</span>
+                  <span className="truncate">{videoDetailsMap[activeCampaign.videoId]?.authorName || 'YouTube Creator'}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Strict Locked Notice Box */}
+            <div className="w-full p-4 rounded-2xl bg-gradient-to-r from-red-950/80 via-slate-900 to-amber-950/80 border border-red-500/40 text-left space-y-1.5 shadow-xl">
+              <div className="flex items-center gap-2 text-rose-300 font-extrabold text-xs">
+                <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
+                <span>Page Visibility API সিকিউরিটি রুলস</span>
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                ১. <strong>সক্রিয় থাকা বাধ্যতামূলক:</strong> আপনি অন্য ট্যাবে গেলে বা মিনিমাইজ করলে টাইমার সাথে সাথে থেমে যাবে।<br />
+                ২. <strong>সম্পূর্ণ ক্রেডিট:</strong> সময় ০ সেকেন্ড হওয়ামাত্র একাউন্টে পয়েন্ট জমা হয়ে স্ক্রিন আনলক হবে।
+              </p>
+            </div>
+
+            {/* Center Action Buttons */}
+            <div className="w-full flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+              <button
+                onClick={handleRefocusYouTube}
+                className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-500 hover:from-red-500 hover:to-rose-500 text-white font-black text-sm flex items-center justify-center gap-2.5 shadow-xl shadow-red-600/40 cursor-pointer active:scale-95 transition-all"
+              >
+                <Tv className="w-4 h-4" />
+                <span>YouTube উইন্ডো সামনে আনুন (Focus)</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
+
+              <button
+                onClick={() => setShowExitConfirmModal(true)}
+                className="text-xs text-slate-400 hover:text-rose-400 py-2.5 px-4 rounded-xl hover:bg-slate-900 transition-colors cursor-pointer"
+              >
+                সেশন জোরপূর্বক বাতিল করতে চাই ✕
+              </button>
+            </div>
+          </div>
+
+          {/* Bottom Security Footer */}
+          <div className="relative z-10 max-w-5xl mx-auto w-full pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between text-xs text-slate-400">
+            <span className="flex items-center gap-1.5 text-slate-400">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <span>Page Visibility API ও অ্যান্টি-চিট গার্ড সক্রিয়</span>
+            </span>
+            <span className="text-[11px] text-amber-300/80 font-mono">
+              প্রোগ্রেস: {progressPercent}% সম্পূর্ণ
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* ⚠️ STRICT EXIT CONFIRMATION MODAL (CONFIRM FORCED EXIT WITH PENALTY) */}
+      {/* ========================================================================= */}
+      {showExitConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fadeIn">
+          <div 
+            className="relative w-full max-w-md bg-slate-900 border border-red-500/50 rounded-3xl shadow-2xl p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-12 h-12 rounded-2xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center text-rose-400 mx-auto">
+              <AlertTriangle className="w-6 h-6 text-rose-400" />
+            </div>
+
+            <div className="text-center space-y-1.5">
+              <h3 className="text-lg font-black text-white">আপনি কি নিশ্চিতভাবে বের হতে চান?</h3>
+              <p className="text-xs text-rose-300 font-semibold leading-relaxed">
+                সতর্কতা: এখনই বের হয়ে গেলে আপনার দেখা বাতিল হবে এবং আপনি <strong>০ ক্রেডিট</strong> পাবেন!
+              </p>
+            </div>
+
+            <div className="bg-slate-950 p-3.5 rounded-2xl border border-slate-800 text-xs text-slate-400 text-center font-mono">
+              বাকি আছে: <strong className="text-amber-400 text-sm">{secondsRemaining} সেকেন্ড</strong>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowExitConfirmModal(false)}
+                className="flex-1 py-3 px-4 rounded-xl text-xs font-bold bg-slate-800 hover:bg-slate-700 text-white transition-all cursor-pointer"
+              >
+                না, দেখা চালিয়ে যান
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmForcedExit}
+                className="flex-1 py-3 px-4 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white shadow-lg shadow-rose-600/30 transition-all cursor-pointer"
+              >
+                হ্যাঁ, বের হয়ে যান (বাতিল)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CONFIRMATION MODAL FOR DELETING VIDEO CAMPAIGN */}
       {campaignToDelete && (
