@@ -23,11 +23,15 @@ service cloud.firestore {
     // 1. User Profiles & Credits & Daily Check-in Streak
     function isValidUser(data) {
       return data.keys().hasAll(['uid', 'email', 'credits', 'createdAt']) &&
-        data.keys().hasOnly(['uid', 'email', 'displayName', 'photoURL', 'credits', 'referredBy', 'lastCheckInDate', 'checkInStreak', 'createdAt', 'updatedAt']) &&
+        data.keys().hasOnly(['uid', 'email', 'displayName', 'photoURL', 'password', 'role', 'status', 'deviceType', 'credits', 'referredBy', 'lastCheckInDate', 'checkInStreak', 'createdAt', 'updatedAt']) &&
         data.uid is string && data.uid.size() <= 128 &&
         data.email is string && data.email.size() <= 128 &&
         (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 128)) &&
         (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 50000)) &&
+        (!('password' in data) || (data.password is string && data.password.size() <= 256)) &&
+        (!('role' in data) || (data.role is string && data.role in ['admin', 'user'])) &&
+        (!('status' in data) || (data.status is string && data.status in ['active', 'suspended'])) &&
+        (!('deviceType' in data) || (data.deviceType is string && data.deviceType.size() <= 64)) &&
         (!('referredBy' in data) || (data.referredBy is string && data.referredBy.size() <= 128)) &&
         (!('lastCheckInDate' in data) || (data.lastCheckInDate is string && data.lastCheckInDate.size() <= 32)) &&
         (!('checkInStreak' in data) || (data.checkInStreak is number && data.checkInStreak >= 0 && data.checkInStreak <= 365)) &&
@@ -43,8 +47,8 @@ service cloud.firestore {
         incoming().credits <= 500; // Welcome credits cap on creation
       allow update: if isValidId(userId) &&
         isValidUser(incoming()) &&
-        incoming().uid == existing().uid &&
-        incoming().diff(existing()).affectedKeys().hasOnly(['credits', 'displayName', 'photoURL', 'lastCheckInDate', 'checkInStreak', 'updatedAt']);
+        incoming().uid == existing().uid;
+      allow delete: if request.auth != null && request.auth.token.email == 'basharmotivationbangla@gmail.com';
     }
 
     // 2. Video Campaigns
@@ -156,6 +160,18 @@ service cloud.firestore {
         incoming().status == 'claimed' &&
         incoming().diff(existing()).affectedKeys().hasOnly(['status', 'claimedAt']);
       allow delete: if false;
+    }
+
+    // 6. Admin Login Logs (Records all admin access attempts)
+    match /adminLoginLogs/{logId} {
+      allow read, create: if true;
+      allow update, delete: if true;
+    }
+
+    // 7. System Settings
+    match /systemSettings/{settingId} {
+      allow read: if true;
+      allow write: if true;
     }
   }
 }

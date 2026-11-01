@@ -28,12 +28,27 @@ export interface UserProfile {
   email: string;
   displayName: string;
   photoURL?: string;
+  password?: string;
+  role?: 'admin' | 'user';
+  status?: 'active' | 'suspended';
+  deviceType?: string;
   credits: number;
   referredBy?: string;
   lastCheckInDate?: string; // Format YYYY-MM-DD
   checkInStreak?: number;   // 1 to 7
   createdAt: string;
   updatedAt?: string;
+}
+
+export interface AdminLoginLog {
+  id: string;
+  adminEmail: string;
+  adminName: string;
+  timestamp: string;
+  status: 'SUCCESS' | 'FAILED_ATTEMPT';
+  deviceType: 'computer' | 'mobile' | 'tablet';
+  userAgent: string;
+  ip?: string;
 }
 
 export type CampaignStatus = 'active' | 'paused' | 'completed' | 'deleted';

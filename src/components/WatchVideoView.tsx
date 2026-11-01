@@ -100,6 +100,9 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [isCompleted, setIsCompleted] = useState<boolean>(false);
   const [isTimerPaused, setIsTimerPaused] = useState<boolean>(false);
+  const [isDocumentHidden, setIsDocumentHidden] = useState<boolean>(() => 
+    typeof document !== 'undefined' ? document.hidden : false
+  );
   const [claiming, setClaiming] = useState<boolean>(false);
   const [claimSuccessMessage, setClaimSuccessMessage] = useState<string | null>(null);
   const [earlyExitError, setEarlyExitError] = useState<string | null>(null);
@@ -112,23 +115,46 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
 
   const isAdmin = userProfile?.email === 'basharmotivationbangla@gmail.com';
 
-  // PAGE VISIBILITY API: Instantly pause the reward timer if user switches tabs or minimizes the window
+  // PAGE VISIBILITY API: Instantly pause the reward timer & apply blur(20px) if user switches tabs or minimizes window
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'hidden') {
+      const isHidden = document.hidden || document.visibilityState === 'hidden';
+      setIsDocumentHidden(isHidden);
+      if (isHidden) {
         // Tab switched away or minimized: Pause timer immediately!
         setIsTimerPaused(true);
-      } else if (document.visibilityState === 'visible') {
-        // User returned to active tab: Resume timer immediately
+      } else if (!document.hidden && document.visibilityState === 'visible') {
+        // User returned to active tab: Resume timer
+        setIsTimerPaused(false);
+      }
+    };
+
+    const handleWindowBlur = () => {
+      // If user clicks away or switches window/tab while video is playing
+      if (isPlaying) {
+        setIsTimerPaused(true);
+        if (typeof document !== 'undefined' && document.hidden) {
+          setIsDocumentHidden(true);
+        }
+      }
+    };
+
+    const handleWindowFocus = () => {
+      if (typeof document !== 'undefined' && !document.hidden && document.visibilityState === 'visible') {
+        setIsDocumentHidden(false);
         setIsTimerPaused(false);
       }
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('blur', handleWindowBlur);
+    window.addEventListener('focus', handleWindowFocus);
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('blur', handleWindowBlur);
+      window.removeEventListener('focus', handleWindowFocus);
     };
-  }, []);
+  }, [isPlaying]);
 
   // Fetch campaigns from Firestore (Only ACTIVE & UNCOMPLETED campaigns are published)
   useEffect(() => {
@@ -462,6 +488,68 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
     };
   }, [isPlaying, isCompleted, activeCampaign]);
 
+  // INESCAPABLE WATCH SYSTEM 4: Complete Keyboard & Shortcut Lock (Computer / Desktop)
+  useEffect(() => {
+    if (isPlaying && !isCompleted) {
+      const handleKeyDown = (e: KeyboardEvent) => {
+        // Block all non-critical keys on computer during locked session
+        // F1-F12, Space, Escape, Tab, Backspace, Ctrl/Cmd shortcuts (Ctrl+W, Ctrl+R, etc.)
+        const isBlockedKey = 
+          e.key.startsWith('F') ||
+          e.key === 'Escape' ||
+          e.key === 'Tab' ||
+          e.key === ' ' ||
+          e.ctrlKey || 
+          e.metaKey ||
+          e.altKey;
+
+        if (isBlockedKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          setToastMessage('🔒 লকড ওয়াচ মোড: ভিডিও দেখা শেষ না হওয়া পর্যন্ত কীবোর্ড নিষ্ক্রিয় থাকবে!');
+        }
+      };
+
+      const handleContextMenu = (e: MouseEvent) => {
+        e.preventDefault();
+        setToastMessage('🔒 লকড ওয়াচ মোড: রাইট-ক্লিক মেনু নিষ্ক্রিয় করা হয়েছে!');
+      };
+
+      window.addEventListener('keydown', handleKeyDown, { capture: true });
+      window.addEventListener('contextmenu', handleContextMenu, { capture: true });
+      return () => {
+        window.removeEventListener('keydown', handleKeyDown, { capture: true });
+        window.removeEventListener('contextmenu', handleContextMenu, { capture: true });
+      };
+    }
+  }, [isPlaying, isCompleted]);
+
+  // INESCAPABLE WATCH SYSTEM 5: Complete Touch, Pinch & Gesture Lock (Mobile & Tablet)
+  useEffect(() => {
+    if (isPlaying && !isCompleted) {
+      // Prevent pull-to-refresh and body scroll on mobile
+      const originalOverflow = document.body.style.overflow;
+      const originalTouchAction = document.body.style.touchAction;
+      document.body.style.overflow = 'hidden';
+      document.body.style.touchAction = 'none';
+
+      const handleTouchMove = (e: TouchEvent) => {
+        // Block scrolling or dragging outside clickable action buttons
+        const target = e.target as HTMLElement | null;
+        if (!target?.closest('button') && !target?.closest('a')) {
+          if (e.cancelable) e.preventDefault();
+        }
+      };
+
+      window.addEventListener('touchmove', handleTouchMove, { passive: false });
+      return () => {
+        document.body.style.overflow = originalOverflow;
+        document.body.style.touchAction = originalTouchAction;
+        window.removeEventListener('touchmove', handleTouchMove);
+      };
+    }
+  }, [isPlaying, isCompleted]);
+
   // TIMER COUNTDOWN: Strictly controlled by isPlaying, !isTimerPaused, and active tab visibility
   useEffect(() => {
     if (isPlaying && !isTimerPaused && secondsRemaining > 0) {
@@ -581,6 +669,13 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
     }
   };
 
+  // Resume session from paused/inactive state (dismiss blur and refocus YouTube window)
+  const handleResumeSession = () => {
+    setIsDocumentHidden(false);
+    setIsTimerPaused(false);
+    handleRefocusYouTube();
+  };
+
   // User confirmed forced exit
   const handleConfirmForcedExit = () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -594,6 +689,7 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
     ytWindowRef.current = null;
     setIsPlaying(false);
     setIsTimerPaused(false);
+    setIsDocumentHidden(false);
     setShowExitConfirmModal(false);
     setSecondsRemaining(activeCampaign ? activeCampaign.targetSeconds : 30);
     setEarlyExitError('⛔ আপনি সেশন থেকে জোরপূর্বক বের হয়ে গেছেন! কোনো ক্রেডিট যোগ করা হয়নি।');
@@ -725,8 +821,17 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
     ? Math.min(100, Math.round(((activeCampaign.targetSeconds - secondsRemaining) / activeCampaign.targetSeconds) * 100))
     : 0;
 
+  const isSessionInactive = isPlaying && (isDocumentHidden || isTimerPaused || (typeof document !== 'undefined' && document.hidden));
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 animate-fadeIn">
+    <div 
+      className={`relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 animate-fadeIn transition-all duration-300 ${
+        isSessionInactive ? 'filter blur-[20px] pointer-events-none select-none' : ''
+      }`}
+      style={{
+        filter: isSessionInactive ? 'blur(20px)' : undefined,
+      }}
+    >
       {/* Real YouTube View Guarantee Banner */}
       <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-red-950/80 via-slate-900 to-amber-950/70 border border-red-500/30 p-4 sm:p-5 shadow-2xl">
         <div className="absolute -top-16 -right-16 w-48 h-48 bg-red-600/15 rounded-full blur-3xl pointer-events-none" />
@@ -1464,174 +1569,275 @@ export const WatchVideoView: React.FC<WatchVideoViewProps> = ({
       {/* ========================================================================= */}
       {isPlaying && activeCampaign && (
         <div className="fixed inset-0 z-50 bg-slate-950/98 backdrop-blur-3xl flex flex-col justify-between p-4 sm:p-8 animate-fadeIn select-none overflow-y-auto">
-          {/* Ambient Cyberpunk Glow Behind Cinema Screen */}
-          <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-red-600/20 rounded-full blur-[140px] pointer-events-none" />
-          <div className="absolute bottom-10 left-1/4 w-72 h-72 bg-amber-500/15 rounded-full blur-[120px] pointer-events-none" />
+          {/* Inner Cinema Screen content (heavily blurred with blur(20px) when session is inactive) */}
+          <div 
+            className={`w-full min-h-full flex flex-col justify-between transition-all duration-300 ${
+              isSessionInactive ? 'filter blur-[20px] pointer-events-none select-none' : ''
+            }`}
+            style={{
+              filter: isSessionInactive ? 'blur(20px)' : undefined,
+            }}
+          >
+            {/* Ambient Cyberpunk Glow Behind Cinema Screen */}
+            <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-red-600/20 rounded-full blur-[140px] pointer-events-none" />
+            <div className="absolute bottom-10 left-1/4 w-72 h-72 bg-amber-500/15 rounded-full blur-[120px] pointer-events-none" />
 
-          {/* Top Status Header */}
-          <div className="relative z-10 max-w-5xl mx-auto w-full flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800/80">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-red-600/20 border border-red-500/40 flex items-center justify-center text-red-400 shadow-lg shadow-red-600/20">
-                <Lock className="w-5 h-5 text-red-400 animate-pulse" />
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-black text-white text-sm sm:text-base tracking-tight">
-                    ইউটিউব ওয়াচ সেশন সম্পূর্ণ লকড
-                  </span>
-                  <span className="text-[10px] bg-red-600 text-white font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider shadow">
-                    LOCKED
-                  </span>
+            {/* Top Status Header */}
+            <div className="relative z-10 max-w-5xl mx-auto w-full flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-800/80">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-red-600/20 border border-red-500/40 flex items-center justify-center text-red-400 shadow-lg shadow-red-600/20">
+                  <Lock className="w-5 h-5 text-red-400 animate-pulse" />
                 </div>
-                <p className="text-xs text-amber-300/90 font-medium">
-                  {isTimerPaused 
-                    ? 'ট্যাব সুইচ বা মিনিমাইজ সনাক্ত হয়েছে! টাইমার পজ করা হয়েছে।' 
-                    : 'সক্রিয়ভাবে ভিডিও দেখুন। ট্যাব পরিবর্তন বা মিনিমাইজ করলে টাইমার স্বয়ংক্রিয়ভাবে পজ হবে।'}
-                </p>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-black text-white text-sm sm:text-base tracking-tight">
+                      ইউটিউব ওয়াচ সেশন সম্পূর্ণ লকড
+                    </span>
+                    <span className="text-[10px] bg-red-600 text-white font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wider shadow">
+                      LOCKED
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-300/90 font-medium">
+                    {isTimerPaused 
+                      ? 'ট্যাব সুইচ বা মিনিমাইজ সনাক্ত হয়েছে! টাইমার পজ করা হয়েছে।' 
+                      : 'সক্রিয়ভাবে ভিডিও দেখুন। ট্যাব পরিবর্তন বা মিনিমাইজ করলে টাইমার স্বয়ংক্রিয়ভাবে পজ হবে।'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {isTimerPaused ? (
+                  <span className="flex items-center gap-1.5 text-xs font-mono font-black text-amber-300 bg-amber-500/20 border border-amber-500/40 px-3 py-1 rounded-xl animate-pulse">
+                    <Pause className="w-3.5 h-3.5 text-amber-400" />
+                    <span>টাইমার পজড (PAUSED)</span>
+                  </span>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-3 w-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" />
+                    </span>
+                    <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-xl">
+                      সক্রিয় দেখা হচ্ছে • ট্র্যাকিং রানিং
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              {isTimerPaused ? (
-                <span className="flex items-center gap-1.5 text-xs font-mono font-black text-amber-300 bg-amber-500/20 border border-amber-500/40 px-3 py-1 rounded-xl animate-pulse">
-                  <Pause className="w-3.5 h-3.5 text-amber-400" />
-                  <span>টাইমার পজড (PAUSED)</span>
-                </span>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500" />
-                  </span>
-                  <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 rounded-xl">
-                    সক্রিয় দেখা হচ্ছে • ট্র্যাকিং রানিং
-                  </span>
+            {/* Center Immersive Monitoring Core */}
+            <div className="relative z-10 max-w-xl mx-auto w-full my-auto py-6 flex flex-col items-center text-center space-y-6">
+              
+              {/* Page Visibility API Alert Banner when paused */}
+              {isTimerPaused && (
+                <div className="w-full p-4 rounded-2xl bg-amber-500/20 border border-amber-500/50 text-amber-200 flex items-center gap-3 text-left shadow-xl animate-bounce">
+                  <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+                  <div className="text-xs sm:text-sm font-bold leading-snug">
+                    <span>সতর্কতা: আপনি ট্যাব পরিবর্তন বা মিনিমাইজ করেছেন!</span>
+                    <span className="block text-[11px] font-normal text-amber-300/90 mt-0.5">
+                      পুরো ক্রেডিট পেতে ভিডিওটি সক্রিয়ভাবে দেখতে হবে। পেইজে ফিরে আসা মাত্র টাইমার পুনরায় চলবে।
+                    </span>
+                  </div>
                 </div>
               )}
-            </div>
-          </div>
 
-          {/* Center Immersive Monitoring Core */}
-          <div className="relative z-10 max-w-xl mx-auto w-full my-auto py-6 flex flex-col items-center text-center space-y-6">
-            
-            {/* Page Visibility API Alert Banner when paused */}
-            {isTimerPaused && (
-              <div className="w-full p-4 rounded-2xl bg-amber-500/20 border border-amber-500/50 text-amber-200 flex items-center gap-3 text-left shadow-xl animate-bounce">
-                <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
-                <div className="text-xs sm:text-sm font-bold leading-snug">
-                  <span>সতর্কতা: আপনি ট্যাব পরিবর্তন বা মিনিমাইজ করেছেন!</span>
-                  <span className="block text-[11px] font-normal text-amber-300/90 mt-0.5">
-                    পুরো ক্রেডিট পেতে ভিডিওটি সক্রিয়ভাবে দেখতে হবে। পেইজে ফিরে আসা মাত্র টাইমার পুনরায় চলবে।
+              {/* Pulsating Circular Countdown Gauge */}
+              <div className="relative flex items-center justify-center">
+                {/* Outer Pulsing Glow Wave */}
+                <div className={`absolute w-56 h-56 sm:w-64 sm:h-64 rounded-full border pointer-events-none opacity-40 ${isTimerPaused ? 'border-amber-500/30' : 'border-red-500/25 animate-ping'}`} />
+                <div className={`absolute w-44 h-44 sm:w-52 sm:h-52 rounded-full border pointer-events-none ${isTimerPaused ? 'border-amber-500/40' : 'border-amber-500/20'}`} />
+
+                <svg className="w-44 h-44 sm:w-52 sm:h-52 transform -rotate-90">
+                  <circle
+                    cx="50%"
+                    cy="50%"
+                    r="80"
+                    className="stroke-slate-800"
+                    strokeWidth="10"
+                    fill="transparent"
+                  />
+                  <circle
+                    cx="50%"
+                    cy="50%"
+                    r="80"
+                    className={`transition-all duration-1000 ease-linear ${isTimerPaused ? 'stroke-amber-400' : 'stroke-red-500'}`}
+                    strokeWidth="10"
+                    strokeDasharray={502}
+                    strokeDashoffset={502 - (502 * progressPercent) / 100}
+                    strokeLinecap="round"
+                    fill="transparent"
+                  />
+                </svg>
+
+                <div className="absolute flex flex-col items-center justify-center select-none">
+                  <span className={`text-4xl sm:text-5xl font-black font-mono tracking-tight drop-shadow-lg ${isTimerPaused ? 'text-amber-400 animate-pulse' : 'text-white'}`}>
+                    {secondsRemaining}s
+                  </span>
+                  <span className="text-xs text-amber-300 font-extrabold uppercase tracking-widest mt-1 flex items-center gap-1">
+                    {isTimerPaused ? (
+                      <>
+                        <Pause className="w-3 h-3 text-amber-400" />
+                        <span>পজড (PAUSED)</span>
+                      </>
+                    ) : (
+                      <span>নির্ধারিত সময় বাকি</span>
+                    )}
                   </span>
                 </div>
               </div>
-            )}
 
-            {/* Pulsating Circular Countdown Gauge */}
-            <div className="relative flex items-center justify-center">
-              {/* Outer Pulsing Glow Wave */}
-              <div className={`absolute w-56 h-56 sm:w-64 sm:h-64 rounded-full border pointer-events-none opacity-40 ${isTimerPaused ? 'border-amber-500/30' : 'border-red-500/25 animate-ping'}`} />
-              <div className={`absolute w-44 h-44 sm:w-52 sm:h-52 rounded-full border pointer-events-none ${isTimerPaused ? 'border-amber-500/40' : 'border-amber-500/20'}`} />
-
-              <svg className="w-44 h-44 sm:w-52 sm:h-52 transform -rotate-90">
-                <circle
-                  cx="50%"
-                  cy="50%"
-                  r="80"
-                  className="stroke-slate-800"
-                  strokeWidth="10"
-                  fill="transparent"
+              {/* Video Summary Capsule */}
+              <div className="w-full bg-slate-900/90 border border-slate-800 p-4 rounded-3xl shadow-2xl flex items-center gap-3.5 text-left">
+                <img
+                  src={getYouTubeThumbnail(activeCampaign.videoId)}
+                  alt=""
+                  className="w-20 h-14 rounded-2xl object-cover shrink-0 ring-1 ring-slate-700 shadow-md"
                 />
-                <circle
-                  cx="50%"
-                  cy="50%"
-                  r="80"
-                  className={`transition-all duration-1000 ease-linear ${isTimerPaused ? 'stroke-amber-400' : 'stroke-red-500'}`}
-                  strokeWidth="10"
-                  strokeDasharray={502}
-                  strokeDashoffset={502 - (502 * progressPercent) / 100}
-                  strokeLinecap="round"
-                  fill="transparent"
-                />
-              </svg>
-
-              <div className="absolute flex flex-col items-center justify-center select-none">
-                <span className={`text-4xl sm:text-5xl font-black font-mono tracking-tight drop-shadow-lg ${isTimerPaused ? 'text-amber-400 animate-pulse' : 'text-white'}`}>
-                  {secondsRemaining}s
-                </span>
-                <span className="text-xs text-amber-300 font-extrabold uppercase tracking-widest mt-1 flex items-center gap-1">
-                  {isTimerPaused ? (
-                    <>
-                      <Pause className="w-3 h-3 text-amber-400" />
-                      <span>পজড (PAUSED)</span>
-                    </>
-                  ) : (
-                    <span>নির্ধারিত সময় বাকি</span>
-                  )}
-                </span>
-              </div>
-            </div>
-
-            {/* Video Summary Capsule */}
-            <div className="w-full bg-slate-900/90 border border-slate-800 p-4 rounded-3xl shadow-2xl flex items-center gap-3.5 text-left">
-              <img
-                src={getYouTubeThumbnail(activeCampaign.videoId)}
-                alt=""
-                className="w-20 h-14 rounded-2xl object-cover shrink-0 ring-1 ring-slate-700 shadow-md"
-              />
-              <div className="min-w-0 flex-1">
-                <h4 className="text-xs sm:text-sm font-bold text-white truncate">
-                  {videoDetailsMap[activeCampaign.videoId]?.title || activeCampaign.videoTitle}
-                </h4>
-                <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1">
-                  <span className="text-amber-400 font-extrabold font-mono">+{activeCampaign.targetSeconds} ক্রেডিট রিওয়ার্ড</span>
-                  <span>•</span>
-                  <span className="truncate">{videoDetailsMap[activeCampaign.videoId]?.authorName || 'YouTube Creator'}</span>
+                <div className="min-w-0 flex-1">
+                  <h4 className="text-xs sm:text-sm font-bold text-white truncate">
+                    {videoDetailsMap[activeCampaign.videoId]?.title || activeCampaign.videoTitle}
+                  </h4>
+                  <div className="flex items-center gap-2 text-[11px] text-slate-400 mt-1">
+                    <span className="text-amber-400 font-extrabold font-mono">+{activeCampaign.targetSeconds} ক্রেডিট রিওয়ার্ড</span>
+                    <span>•</span>
+                    <span className="truncate">{videoDetailsMap[activeCampaign.videoId]?.authorName || 'YouTube Creator'}</span>
+                  </div>
                 </div>
               </div>
+
+              {/* Strict Locked Notice Box */}
+              <div className="w-full p-4 rounded-2xl bg-gradient-to-r from-red-950/80 via-slate-900 to-amber-950/80 border border-red-500/40 text-left space-y-1.5 shadow-xl">
+                <div className="flex items-center gap-2 text-rose-300 font-extrabold text-xs">
+                  <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
+                  <span>Page Visibility API সিকিউরিটি রুলস</span>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  ১. <strong>সক্রিয় থাকা বাধ্যতামূলক:</strong> আপনি অন্য ট্যাবে গেলে বা মিনিমাইজ করলে টাইমার সাথে সাথে থেমে যাবে।<br />
+                  ২. <strong>সম্পূর্ণ ক্রেডিট:</strong> সময় ০ সেকেন্ড হওয়ামাত্র একাউন্টে পয়েন্ট জমা হয়ে স্ক্রিন আনলক হবে।
+                </p>
+              </div>
+
+              {/* Center Action Buttons */}
+              <div className="w-full flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+                <button
+                  onClick={handleRefocusYouTube}
+                  className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-500 hover:from-red-500 hover:to-rose-500 text-white font-black text-sm flex items-center justify-center gap-2.5 shadow-xl shadow-red-600/40 cursor-pointer active:scale-95 transition-all"
+                >
+                  <Tv className="w-4 h-4" />
+                  <span>YouTube উইন্ডো সামনে আনুন (Focus)</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  onClick={() => setShowExitConfirmModal(true)}
+                  className="text-xs text-slate-400 hover:text-rose-400 py-2.5 px-4 rounded-xl hover:bg-slate-900 transition-colors cursor-pointer"
+                >
+                  সেশন জোরপূর্বক বাতিল করতে চাই ✕
+                </button>
+              </div>
             </div>
 
-            {/* Strict Locked Notice Box */}
-            <div className="w-full p-4 rounded-2xl bg-gradient-to-r from-red-950/80 via-slate-900 to-amber-950/80 border border-red-500/40 text-left space-y-1.5 shadow-xl">
-              <div className="flex items-center gap-2 text-rose-300 font-extrabold text-xs">
-                <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
-                <span>Page Visibility API সিকিউরিটি রুলস</span>
+            {/* Bottom Security Footer */}
+            <div className="relative z-10 max-w-5xl mx-auto w-full pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between text-xs text-slate-400">
+              <span className="flex items-center gap-1.5 text-slate-400">
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>Page Visibility API ও অ্যান্টি-চিট গার্ড সক্রিয়</span>
+              </span>
+              <span className="text-[11px] text-amber-300/80 font-mono">
+                প্রোগ্রেস: {progressPercent}% সম্পূর্ণ
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
+      {/* 🛡️ HEAVY BLUR (backdrop-filter: blur(20px)) ANTI-CHEAT INACTIVE OVERLAY */}
+      {/* ========================================================================= */}
+      {isSessionInactive && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-slate-950/80 transition-all duration-300 animate-fadeIn"
+          style={{
+            backdropFilter: 'blur(20px)',
+            WebkitBackdropFilter: 'blur(20px)',
+          }}
+        >
+          <div 
+            className="relative max-w-lg w-full bg-slate-900/95 border-2 border-amber-500/60 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-amber-500/20 text-center space-y-5 animate-scaleUp"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Glowing Pulsing Shield Icon */}
+            <div className="relative mx-auto w-20 h-20 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full bg-amber-500/30 blur-xl animate-pulse" />
+              <div className="relative w-20 h-20 rounded-3xl bg-amber-500/20 border-2 border-amber-400/60 flex items-center justify-center text-amber-400 shadow-xl">
+                <ShieldAlert className="w-10 h-10 text-amber-400 animate-bounce" />
               </div>
-              <p className="text-xs text-slate-300 leading-relaxed">
-                ১. <strong>সক্রিয় থাকা বাধ্যতামূলক:</strong> আপনি অন্য ট্যাবে গেলে বা মিনিমাইজ করলে টাইমার সাথে সাথে থেমে যাবে।<br />
-                ২. <strong>সম্পূর্ণ ক্রেডিট:</strong> সময় ০ সেকেন্ড হওয়ামাত্র একাউন্টে পয়েন্ট জমা হয়ে স্ক্রিন আনলক হবে।
+            </div>
+
+            {/* Badge & Title */}
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/20 border border-red-500/40 text-red-300 text-xs font-mono font-bold tracking-wide">
+                <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+                <span>অ্যান্টি-চিট গার্ড: সেশন নিষ্ক্রিয় (SESSION INACTIVE)</span>
+              </div>
+              <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                সেশন নিষ্ক্রিয় সনাক্ত হয়েছে!
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed max-w-md mx-auto">
+                চিটিং ও ফাঁকি রোধে পুরো কন্টেন্ট এরিয়া <span className="text-amber-400 font-bold font-mono">blur(20px)</span> ফিল্টার দিয়ে ঢেকে দেওয়া হয়েছে এবং রিওয়ার্ড টাইমার সাময়িকভাবে বন্ধ রাখা হয়েছে।
               </p>
             </div>
 
-            {/* Center Action Buttons */}
-            <div className="w-full flex flex-col sm:flex-row items-center justify-center gap-3 pt-2">
+            {/* Real-time Status Card */}
+            <div className="grid grid-cols-2 gap-2.5 text-left bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800">
+              <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800/80">
+                <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">ট্যাব স্ট্যাটাস</div>
+                <div className="text-xs font-bold text-amber-400 flex items-center gap-1.5 mt-0.5 font-mono">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  <span>document.hidden = true</span>
+                </div>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800/80">
+                <div className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">টাইমার স্ট্যাটাস</div>
+                <div className="text-xs font-bold text-rose-400 flex items-center gap-1.5 mt-0.5 font-mono">
+                  <Pause className="w-3 h-3 text-rose-400" />
+                  <span>{secondsRemaining}s বাকি (পজড)</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Guidelines reminder */}
+            <div className="p-3 bg-amber-950/30 border border-amber-500/30 rounded-xl text-left text-xs text-amber-200/90 leading-relaxed flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+              <span>
+                ক্রেডিট পেতে হলে এই ট্যাবেই অবস্থান করতে হবে। ব্রাউজার ট্যাব পরিবর্তন, উইন্ডো মিনিমাইজ বা ব্যাকগ্রাউন্ডে রাখলে টাইমার চলবে না।
+              </span>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-col sm:flex-row items-center gap-3 pt-1">
+              <button
+                onClick={handleResumeSession}
+                className="w-full sm:flex-1 py-3.5 px-5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:to-teal-500 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/30 cursor-pointer active:scale-95 transition-all"
+              >
+                <Play className="w-4 h-4 fill-current" />
+                <span>সেশন পুনরায় চালু করুন (Resume)</span>
+              </button>
               <button
                 onClick={handleRefocusYouTube}
-                className="w-full sm:w-auto px-6 py-3.5 rounded-2xl bg-gradient-to-r from-red-600 via-rose-600 to-red-500 hover:from-red-500 hover:to-rose-500 text-white font-black text-sm flex items-center justify-center gap-2.5 shadow-xl shadow-red-600/40 cursor-pointer active:scale-95 transition-all"
+                className="w-full sm:w-auto py-3.5 px-4 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 border border-slate-700 cursor-pointer transition-all"
               >
-                <Tv className="w-4 h-4" />
-                <span>YouTube উইন্ডো সামনে আনুন (Focus)</span>
-                <ExternalLink className="w-3.5 h-3.5" />
-              </button>
-
-              <button
-                onClick={() => setShowExitConfirmModal(true)}
-                className="text-xs text-slate-400 hover:text-rose-400 py-2.5 px-4 rounded-xl hover:bg-slate-900 transition-colors cursor-pointer"
-              >
-                সেশন জোরপূর্বক বাতিল করতে চাই ✕
+                <Tv className="w-4 h-4 text-red-400" />
+                <span>YouTube উইন্ডো</span>
               </button>
             </div>
-          </div>
 
-          {/* Bottom Security Footer */}
-          <div className="relative z-10 max-w-5xl mx-auto w-full pt-4 border-t border-slate-800/80 flex flex-wrap items-center justify-between text-xs text-slate-400">
-            <span className="flex items-center gap-1.5 text-slate-400">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span>Page Visibility API ও অ্যান্টি-চিট গার্ড সক্রিয়</span>
-            </span>
-            <span className="text-[11px] text-amber-300/80 font-mono">
-              প্রোগ্রেস: {progressPercent}% সম্পূর্ণ
-            </span>
+            <button
+              onClick={() => setShowExitConfirmModal(true)}
+              className="text-[11px] text-slate-400 hover:text-rose-400 transition-colors cursor-pointer"
+            >
+              ভিডিও দেখা বাতিল করতে চাই (পেনাল্টি প্রযোজ্য) ✕
+            </button>
           </div>
         </div>
       )}

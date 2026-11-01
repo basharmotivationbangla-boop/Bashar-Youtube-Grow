@@ -15,11 +15,12 @@ import { DailyCheckInModal } from './components/DailyCheckInModal';
 import { RedeemCodeModal } from './components/RedeemCodeModal';
 import { ReferralModal } from './components/ReferralModal';
 import { ProfileView } from './components/ProfileView';
+import { AdminPanelView } from './components/AdminPanelView';
 import { Play, Gift, Sparkles, Flame, Check, Users, User } from 'lucide-react';
 
 function MainApp() {
   const { userProfile, openAuthModal } = useAuth();
-  const [currentTab, setCurrentTab] = useState<'watch' | 'create' | 'dashboard' | 'profile'>('watch');
+  const [currentTab, setCurrentTab] = useState<'watch' | 'create' | 'dashboard' | 'profile' | 'admin'>('watch');
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const [dailyCheckInOpen, setDailyCheckInOpen] = useState(false);
   const [redeemModalOpen, setRedeemModalOpen] = useState(false);
@@ -142,6 +143,9 @@ function MainApp() {
             onOpenDailyCheckIn={() => setDailyCheckInOpen(true)}
           />
         )}
+        {currentTab === 'admin' && (
+          <AdminPanelView onBackToApp={() => setCurrentTab('watch')} />
+        )}
       </main>
 
       {/* Clean Footer */}
@@ -161,6 +165,13 @@ function MainApp() {
               className="hover:text-white transition-colors cursor-pointer"
             >
               নিয়মাবলী (Rules)
+            </button>
+            <span>•</span>
+            <button
+              onClick={() => setCurrentTab('admin')}
+              className="text-red-400 hover:text-red-300 font-bold transition-colors cursor-pointer"
+            >
+              এডমিন কন্ট্রোল সেন্টার
             </button>
             <span>•</span>
             <span className="text-amber-400 font-medium">১ সেকেন্ড ভিডিও ভিউ = ১ ক্রেডিট</span>
