@@ -16,6 +16,7 @@ import {
   Trash2, 
   CheckCircle2, 
   XCircle, 
+  X,
   AlertTriangle, 
   LogOut, 
   RefreshCw, 
@@ -47,7 +48,6 @@ import {
   adminUpdateUserStatus,
   adminUpdateUserPassword,
   adminUpdateUserLogo,
-  adminDeleteUser,
   adminToggleCampaignStatus,
   adminDeleteCampaign
 } from '../firebase';
@@ -68,9 +68,6 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onBackToApp }) =
     return sessionStorage.getItem('bashar_admin_authorized') === 'true';
   });
 
-  const [enteredAdminEmail, setEnteredAdminEmail] = useState<string>(() => {
-    return userProfile?.email || 'basharmotivationbangla@gmail.com';
-  });
   const [masterPasswordInput, setMasterPasswordInput] = useState<string>('');
   const [showMasterPassword, setShowMasterPassword] = useState<boolean>(false);
   const [gatekeeperLoading, setGatekeeperLoading] = useState<boolean>(false);
@@ -89,7 +86,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onBackToApp }) =
   const [userSearchTerm, setUserSearchTerm] = useState<string>('');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'suspended'>('all');
 
-  // Revealed passwords state (UID -> boolean)
+  // Revealed passwords state (UID -> boolean) - defaulted to true so passwords are fully visible
   const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -108,7 +105,9 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onBackToApp }) =
   const [newLogoUrlInput, setNewLogoUrlInput] = useState<string>('');
   const [savingLogo, setSavingLogo] = useState<boolean>(false);
 
-  const [userToDelete, setUserToDelete] = useState<UserProfile | null>(null);
+  // Full-size Logo Preview Modal
+  const [previewLogoUser, setPreviewLogoUser] = useState<UserProfile | null>(null);
+
   const [campaignToDelete, setCampaignToDelete] = useState<VideoCampaign | null>(null);
 
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -175,20 +174,14 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onBackToApp }) =
     return () => unsubscribeCampaigns();
   }, [isAuthorized]);
 
-  // Handle Master Key Gatekeeper Submission
+  // Handle Master Key Gatekeeper Submission (Only Password Required)
   const handleGatekeeperSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setGatekeeperError(null);
     setGatekeeperLoading(true);
 
-    const email = enteredAdminEmail.trim().toLowerCase();
     const key = masterPasswordInput.trim();
 
-    if (!email) {
-      setGatekeeperError('অনুগ্রহ করে এডমিন ইমেইল প্রদান করুন।');
-      setGatekeeperLoading(false);
-      return;
-    }
     if (!key) {
       setGatekeeperError('অনুগ্রহ করে শক্তিশালী এডমিন মাস্টার পাসওয়ার্ডটি লিখুন।');
       setGatekeeperLoading(false);
@@ -197,7 +190,9 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onBackToApp }) =
 
     try {
       const isValid = await verifyAdminMasterPassword(key);
-      await recordAdminLoginLog(email, userProfile?.displayName || 'Super Admin', isValid);
+      const adminEmail = userProfile?.email || 'basharmotivationbangla@gmail.com';
+      const adminName = userProfile?.displayName || 'Super Admin';
+      await recordAdminLoginLog(adminEmail, adminName, isValid);
 
       if (isValid) {
         setIsAuthorized(true);
@@ -207,7 +202,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onBackToApp }) =
         confetti({ particleCount: 120, spread: 80, origin: { y: 0.5 } });
         setMasterPasswordInput('');
       } else {
-        setGatekeeperError('❌ ভুল এডমিন মাস্টার পাসওয়ার্ড! প্রবেশাধিকার প্রত্যাখ্যাত। এই ব্যর্থ চেষ্টা সিস্টেমে রেকর্ড করা হয়েছে।');
+        setGatekeeperError('❌ ভুল এডমিন মাস্টার পাসওয়ার্ড! প্রবেশাধিকার প্রত্যাখ্যাত।');
       }
     } catch (err: any) {
       setGatekeeperError(err?.message || 'এডমিন ভেরিফিকেশন ব্যর্থ হয়েছে।');
@@ -303,18 +298,6 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onBackToApp }) =
     }
   };
 
-  // Delete User
-  const handleConfirmDeleteUser = async () => {
-    if (!userToDelete) return;
-    try {
-      await adminDeleteUser(userToDelete.uid);
-      showToast(`🗑️ ${userToDelete.displayName} অ্যাকাউন্টটি সফলভাবে মুছে ফেলা হয়েছে।`);
-      setUserToDelete(null);
-    } catch (err: any) {
-      showToast(`❌ ডিলিট ব্যর্থ: ${err?.message}`);
-    }
-  };
-
   // Toggle Campaign Status
   const handleToggleCampaign = async (camp: VideoCampaign) => {
     const nextStatus = camp.status === 'active' ? 'paused' : 'active';
@@ -378,21 +361,8 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onBackToApp }) =
             </div>
           </div>
 
-          {/* Gatekeeper Form */}
+          {/* Gatekeeper Form (Only Password Required) */}
           <form onSubmit={handleGatekeeperSubmit} className="space-y-4">
-            <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
-                <Users className="w-3.5 h-3.5 text-amber-400" />
-                <span>এডমিন Gmail:</span>
-              </label>
-              <input
-                type="email"
-                value={enteredAdminEmail}
-                onChange={(e) => setEnteredAdminEmail(e.target.value)}
-                required
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-slate-500 font-mono focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500"
-              />
-            </div>
 
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
@@ -673,10 +643,16 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onBackToApp }) =
                                 <img
                                   src={u.photoURL}
                                   alt={u.displayName}
-                                  className="w-10 h-10 rounded-2xl object-cover ring-1 ring-slate-700 shadow-md"
+                                  onClick={() => setPreviewLogoUser(u)}
+                                  className="w-12 h-12 rounded-2xl object-cover ring-2 ring-amber-500/40 shadow-lg cursor-pointer hover:scale-105 transition-all"
+                                  title="বড় করে লোগো দেখুন"
                                 />
                               ) : (
-                                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-red-600 to-amber-600 flex items-center justify-center text-white font-bold text-xs shadow-md">
+                                <div 
+                                  onClick={() => setPreviewLogoUser(u)}
+                                  className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-red-600 via-rose-600 to-amber-600 flex items-center justify-center text-white font-black text-base shadow-lg ring-2 ring-slate-700 cursor-pointer hover:scale-105 transition-all"
+                                  title="লোগো দেখুন"
+                                >
                                   {u.displayName ? u.displayName.charAt(0).toUpperCase() : 'U'}
                                 </div>
                               )}
@@ -686,7 +662,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onBackToApp }) =
                                   setNewLogoUrlInput(u.photoURL || '');
                                 }}
                                 title="লোগো পরিবর্তন করুন"
-                                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-slate-900 border border-slate-700 text-amber-400 flex items-center justify-center opacity-80 hover:opacity-100 cursor-pointer"
+                                className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-slate-900 border border-slate-700 text-amber-400 flex items-center justify-center opacity-80 hover:opacity-100 cursor-pointer shadow"
                               >
                                 <Edit3 className="w-2.5 h-2.5" />
                               </button>
@@ -716,20 +692,24 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onBackToApp }) =
                             )}
                           </td>
 
-                          {/* পাসওয়ার্ড (Password) - With reveal eye & copy */}
+                          {/* পাসওয়ার্ড (Password) - Plain text visible & copy */}
                           <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
-                              <span className="font-mono text-xs px-2.5 py-1 rounded-xl bg-slate-950 border border-slate-800 text-amber-300">
-                                {hasPassword ? (isRevealed ? u.password : '••••••••') : '(Google Auth)'}
+                              <span className="font-mono text-xs font-bold text-amber-300 bg-slate-950 border border-amber-500/30 px-3 py-1.5 rounded-xl shadow select-all">
+                                {hasPassword ? (
+                                  isRevealed ? '••••••••' : u.password
+                                ) : (
+                                  <span className="text-slate-500 font-normal">(Google Auth)</span>
+                                )}
                               </span>
                               {hasPassword && (
                                 <>
                                   <button
                                     onClick={() => toggleRevealPassword(u.uid)}
-                                    title={isRevealed ? 'পাসওয়ার্ড লুকান' : 'পাসওয়ার্ড দেখুন'}
+                                    title={isRevealed ? 'পাসওয়ার্ড স্পষ্ট দেখুন' : 'পাসওয়ার্ড লুকান'}
                                     className="p-1 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-slate-950 cursor-pointer transition-colors"
                                   >
-                                    {isRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                    {isRevealed ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
                                   </button>
                                   <button
                                     onClick={() => copyToClipboard(u.password || '', `pw_${u.uid}`)}
@@ -780,7 +760,7 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onBackToApp }) =
                             </span>
                           </td>
 
-                          {/* অ্যাকশনস */}
+                          {/* অ্যাকশনস (কোনো ব্যবহারকারী ডিলিট করা যাবে না) */}
                           <td className="py-3 px-4 text-right">
                             <div className="flex items-center justify-end gap-1.5">
                               {/* Add / Deduct Credits */}
@@ -815,15 +795,6 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onBackToApp }) =
                                 }`}
                               >
                                 {isUserSuspended ? <UserCheck className="w-3.5 h-3.5" /> : <UserX className="w-3.5 h-3.5" />}
-                              </button>
-
-                              {/* Delete User */}
-                              <button
-                                onClick={() => setUserToDelete(u)}
-                                title="অ্যাকাউন্ট ডিলিট করুন"
-                                className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-600/30 border border-slate-700 hover:border-rose-500 text-slate-400 hover:text-rose-400 cursor-pointer transition-all"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           </td>
@@ -1287,34 +1258,44 @@ export const AdminPanelView: React.FC<AdminPanelViewProps> = ({ onBackToApp }) =
       )}
 
       {/* ========================================================================= */}
-      {/* MODAL 4: CONFIRM DELETE USER */}
+      {/* MODAL 4: FULL-SIZE USER LOGO PREVIEW (কাউকে ডিলিট করা যাবে না, লোগো দেখা যাবে) */}
       {/* ========================================================================= */}
-      {userToDelete && (
+      {previewLogoUser && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/90 backdrop-blur-md animate-fadeIn">
-          <div className="relative w-full max-w-md bg-slate-900 border border-rose-500/50 rounded-3xl p-6 space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto">
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-            <div className="text-center space-y-1">
-              <h3 className="text-base font-bold text-white">আপনি কি নিশ্চিতভাবে এই অ্যাকাউন্টটি ডিলিট করতে চান?</h3>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                ব্যবহারকারী: <strong className="text-white">{userToDelete.displayName} ({userToDelete.email})</strong>। ডিলিট করার পর এই ডাটা আর পুনরুদ্ধার করা যাবে না।
+          <div className="relative w-full max-w-sm bg-slate-900 border border-slate-700/80 rounded-3xl p-6 text-center space-y-4 shadow-2xl">
+            <button
+              onClick={() => setPreviewLogoUser(null)}
+              className="absolute top-4 right-4 p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white hover:bg-slate-700 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="space-y-1">
+              <h3 className="text-base font-bold text-white flex items-center justify-center gap-2">
+                <Sparkles className="w-4 h-4 text-amber-400" /> ব্যবহারকারী প্রোফাইল ছবি / লোগো
+              </h3>
+              <p className="text-xs text-slate-400 font-medium truncate">
+                {previewLogoUser.displayName} ({previewLogoUser.email})
               </p>
             </div>
-            <div className="flex items-center gap-2 pt-2">
-              <button
-                onClick={() => setUserToDelete(null)}
-                className="flex-1 py-2.5 rounded-xl bg-slate-800 text-slate-300 text-xs font-bold cursor-pointer hover:bg-slate-700"
-              >
-                বাতিল
-              </button>
-              <button
-                onClick={handleConfirmDeleteUser}
-                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold cursor-pointer shadow-lg shadow-rose-600/30"
-              >
-                ডিলিট করুন
-              </button>
+            <div className="relative mx-auto w-48 h-48 rounded-2xl overflow-hidden border-2 border-amber-500/40 shadow-xl bg-slate-950 flex items-center justify-center p-2">
+              <img
+                src={previewLogoUser.photoURL || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(previewLogoUser.uid)}`}
+                alt={previewLogoUser.displayName}
+                className="w-full h-full object-cover rounded-xl"
+              />
             </div>
+            <div className="text-left bg-slate-950/60 p-3 rounded-xl border border-slate-800 text-xs text-slate-400 break-all space-y-1 font-mono">
+              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">লোগো লিঙ্ক (Image URL):</div>
+              <div className="line-clamp-2 text-slate-300 text-[11px]">
+                {previewLogoUser.photoURL || 'সিস্টেমের ডিফল্ট অ্যাভাটার'}
+              </div>
+            </div>
+            <button
+              onClick={() => setPreviewLogoUser(null)}
+              className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold transition cursor-pointer"
+            >
+              বন্ধ করুন (Close)
+            </button>
           </div>
         </div>
       )}
