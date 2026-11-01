@@ -101,3 +101,11 @@ export interface ReferralRecord {
   claimedAt?: string;
 }
 
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'model';
+  text: string;
+  timestamp: string;
+}
+
+

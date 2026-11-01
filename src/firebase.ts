@@ -88,6 +88,9 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   throw new Error(JSON.stringify(errInfo));
 }
 
+// Platform Owner & Super Admin Email
+export const OWNER_BASHAR_EMAIL = 'basharmotivationbangla@gmail.com';
+
 // Connection test per skill requirements
 export async function testConnection() {
   try {
@@ -100,6 +103,64 @@ export async function testConnection() {
 }
 testConnection();
 
+// Ensure the platform owner Bashar is always initialized in Firestore with Super Admin role
+export async function seedOwnerBasharProfile(): Promise<UserProfile> {
+  const safeUid = 'g_' + OWNER_BASHAR_EMAIL.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 80);
+  const userRef = doc(db, 'users', safeUid);
+  const now = new Date().toISOString();
+
+  try {
+    const snap = await getDoc(userRef);
+    if (snap.exists()) {
+      const existing = snap.data() as UserProfile;
+      if (existing.role !== 'admin' || existing.status !== 'active') {
+        await updateDoc(userRef, {
+          role: 'admin',
+          status: 'active',
+          updatedAt: now,
+        });
+      }
+      return { ...existing, role: 'admin', status: 'active' };
+    }
+  } catch (e) {
+    console.warn('Notice checking owner doc in Firestore:', e);
+  }
+
+  const ownerProfile: UserProfile = {
+    uid: safeUid,
+    email: OWNER_BASHAR_EMAIL,
+    displayName: 'Bashar Motivation Bangla (Owner)',
+    photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=200&h=200&fit=crop&crop=faces',
+    password: 'Bashar@Master#Admin$2026!',
+    role: 'admin',
+    status: 'active',
+    deviceType: 'computer',
+    credits: 50000,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  try {
+    await setDoc(userRef, ownerProfile);
+  } catch (err) {
+    console.warn('Notice seeding owner profile:', err);
+  }
+
+  return ownerProfile;
+}
+seedOwnerBasharProfile();
+
+// Direct 1-click Sign in as the Platform Creator / Owner Bashar
+export async function signInAsBasharOwner(): Promise<UserProfile> {
+  const profile = await seedOwnerBasharProfile();
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('bashar_google_user', JSON.stringify(profile));
+    sessionStorage.setItem('bashar_admin_authorized', 'true');
+    window.dispatchEvent(new CustomEvent('bashar_user_changed', { detail: profile }));
+  }
+  return profile;
+}
+
 /**
  * Ensure user document exists in Firestore and awards 500 Welcome Credits if new!
  */
@@ -111,6 +172,11 @@ export async function ensureUserProfile(user: FirebaseUser): Promise<UserProfile
 
     if (snap.exists()) {
       const data = snap.data() as UserProfile;
+      if (user.email === OWNER_BASHAR_EMAIL && data.role !== 'admin') {
+        data.role = 'admin';
+        data.status = 'active';
+        await updateDoc(userRef, { role: 'admin', status: 'active', updatedAt: now });
+      }
       return data;
     } else {
       // Check for referral code / inviter UID from session/local storage
@@ -118,14 +184,17 @@ export async function ensureUserProfile(user: FirebaseUser): Promise<UserProfile
         ? (sessionStorage.getItem('bashar_ref') || localStorage.getItem('bashar_ref'))
         : null;
       const validReferrer = storedRef && storedRef !== user.uid ? storedRef : undefined;
+      const isOwner = user.email === OWNER_BASHAR_EMAIL;
 
-      // Create new user profile with 500 initial credits
+      // Create new user profile with 500 initial credits (or 50,000 for Owner)
       const newProfile: UserProfile = {
         uid: user.uid,
         email: user.email || (user.isAnonymous ? `guest_${user.uid.slice(0, 6)}@basharyt.com` : 'user@example.com'),
-        displayName: user.displayName || (user.isAnonymous ? `গেস্ট ইউজার ${user.uid.slice(0, 4)}` : user.email?.split('@')[0] || 'User'),
+        displayName: isOwner ? 'Bashar Motivation Bangla (Owner)' : (user.displayName || (user.isAnonymous ? `গেস্ট ইউজার ${user.uid.slice(0, 4)}` : user.email?.split('@')[0] || 'User')),
         photoURL: user.photoURL || '',
-        credits: WELCOME_CREDITS, // 500 credits bonus!
+        role: isOwner ? 'admin' : 'user',
+        status: 'active',
+        credits: isOwner ? 50000 : WELCOME_CREDITS,
         ...(validReferrer ? { referredBy: validReferrer } : {}),
         createdAt: now,
         updatedAt: now,

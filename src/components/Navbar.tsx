@@ -16,14 +16,15 @@ import {
   Users,
   Flame,
   Key,
-  Shield
+  Shield,
+  Bot
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { logOut } from '../firebase';
 
 interface NavbarProps {
-  currentTab: 'watch' | 'create' | 'dashboard' | 'profile' | 'admin';
-  onSelectTab: (tab: 'watch' | 'create' | 'dashboard' | 'profile' | 'admin') => void;
+  currentTab: 'watch' | 'create' | 'dashboard' | 'profile' | 'admin' | 'chat';
+  onSelectTab: (tab: 'watch' | 'create' | 'dashboard' | 'profile' | 'admin' | 'chat') => void;
   onOpenHowItWorks: () => void;
   onOpenDailyCheckIn: () => void;
   onOpenRedeemModal: () => void;
@@ -55,7 +56,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     }
   };
 
-  const handleSelectNav = (tab: 'watch' | 'create' | 'dashboard' | 'profile' | 'admin') => {
+  const handleSelectNav = (tab: 'watch' | 'create' | 'dashboard' | 'profile' | 'admin' | 'chat') => {
     onSelectTab(tab);
     setDrawerOpen(false);
   };
@@ -155,6 +156,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span className="hidden md:inline">প্রোফাইল</span>
                 </button>
               ) : null}
+
+              {/* Gemini AI Assistant Button */}
+              <button
+                onClick={() => onSelectTab('chat')}
+                title="বশার ইউটিউব গ্রো এআই সহকারী (Gemini 3.8 Flash)"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-2xl text-xs font-bold transition-all shadow-sm cursor-pointer ${
+                  currentTab === 'chat'
+                    ? 'bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 text-white shadow-lg shadow-red-600/30'
+                    : 'bg-slate-900/90 hover:bg-slate-800 border border-amber-500/30 text-amber-300 hover:text-white'
+                }`}
+              >
+                <Bot className="w-3.5 h-3.5 text-amber-400" />
+                <span className="hidden sm:inline">এআই সহকারী</span>
+              </button>
 
               {/* Admin Control Panel Button */}
               <button
@@ -324,6 +339,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                         <span>ভিডিও মুছুন / পরিচালনা</span>
                       </button>
 
+                      {/* Gemini AI Assistant */}
+                      <button
+                        onClick={() => {
+                          onSelectTab('chat');
+                          setUserDropdownOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2 text-xs text-amber-300 hover:bg-amber-500/10 flex items-center gap-2 cursor-pointer transition-colors font-bold border-t border-slate-800/80"
+                      >
+                        <Bot className="w-3.5 h-3.5 text-amber-400" />
+                        <span>বশার এআই সহকারী (Gemini 3.8)</span>
+                      </button>
+
                       {/* Admin Control Center */}
                       <button
                         onClick={() => {
@@ -485,7 +512,30 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <ChevronRight className="w-4 h-4 opacity-60" />
                 </button>
 
-                {/* 4. দৈনিক চেক-ইন বোনাস */}
+                {/* 4. এআই সহকারী (Gemini 3.8 Flash) */}
+                <button
+                  onClick={() => handleSelectNav('chat')}
+                  className={`w-full flex items-center justify-between p-3.5 rounded-2xl text-sm font-bold transition-all cursor-pointer ${
+                    currentTab === 'chat'
+                      ? 'bg-gradient-to-r from-red-600 via-rose-600 to-amber-600 text-white shadow-lg shadow-red-600/30'
+                      : 'bg-slate-900/80 text-amber-300 hover:bg-slate-800 hover:text-white border border-amber-500/30'
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                      currentTab === 'chat' ? 'bg-white/20' : 'bg-amber-500/10 text-amber-400'
+                    }`}>
+                      <Bot className="w-4 h-4" />
+                    </div>
+                    <div className="text-left">
+                      <span>বশার এআই সহকারী (Gemini)</span>
+                      <span className="block text-[10px] text-slate-400 font-normal">ইউটিউব গ্রোথ টিপস ও ভাইরাল টাইটেল</span>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 opacity-60" />
+                </button>
+
+                {/* 5. দৈনিক চেক-ইন বোনাস */}
                 <button
                   onClick={() => {
                     setDrawerOpen(false);

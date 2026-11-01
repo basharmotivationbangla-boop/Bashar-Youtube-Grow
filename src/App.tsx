@@ -16,11 +16,12 @@ import { RedeemCodeModal } from './components/RedeemCodeModal';
 import { ReferralModal } from './components/ReferralModal';
 import { ProfileView } from './components/ProfileView';
 import { AdminPanelView } from './components/AdminPanelView';
-import { Play, Gift, Sparkles, Flame, Check, Users, User } from 'lucide-react';
+import { GeminiChatbotView } from './components/GeminiChatbotView';
+import { Play, Gift, Sparkles, Flame, Check, Users, User, Bot } from 'lucide-react';
 
 function MainApp() {
   const { userProfile, openAuthModal } = useAuth();
-  const [currentTab, setCurrentTab] = useState<'watch' | 'create' | 'dashboard' | 'profile' | 'admin'>('watch');
+  const [currentTab, setCurrentTab] = useState<'watch' | 'create' | 'dashboard' | 'profile' | 'admin' | 'chat'>('watch');
   const [howItWorksOpen, setHowItWorksOpen] = useState(false);
   const [dailyCheckInOpen, setDailyCheckInOpen] = useState(false);
   const [redeemModalOpen, setRedeemModalOpen] = useState(false);
@@ -146,7 +147,25 @@ function MainApp() {
         {currentTab === 'admin' && (
           <AdminPanelView onBackToApp={() => setCurrentTab('watch')} />
         )}
+        {currentTab === 'chat' && (
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <GeminiChatbotView />
+          </div>
+        )}
       </main>
+
+      {/* Floating Gemini AI Launcher Button (visible on other tabs) */}
+      {currentTab !== 'chat' && (
+        <button
+          onClick={() => setCurrentTab('chat')}
+          title="বশার এআই সহকারী (Gemini 3.8 Flash)"
+          className="fixed bottom-6 right-6 z-40 bg-gradient-to-tr from-red-600 via-rose-600 to-amber-500 hover:scale-105 active:scale-95 text-white p-3.5 sm:px-4 sm:py-3 rounded-full shadow-2xl shadow-red-600/40 flex items-center gap-2.5 border border-white/20 transition-all cursor-pointer group"
+        >
+          <Bot className="w-5 h-5 group-hover:rotate-12 transition-transform" />
+          <span className="hidden sm:inline font-bold text-xs">এআই সহকারী (Gemini)</span>
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+        </button>
+      )}
 
       {/* Clean Footer */}
       <footer className="bg-slate-900/90 border-t border-slate-800 py-6 text-xs text-slate-400">
@@ -165,6 +184,14 @@ function MainApp() {
               className="hover:text-white transition-colors cursor-pointer"
             >
               নিয়মাবলী (Rules)
+            </button>
+            <span>•</span>
+            <button
+              onClick={() => setCurrentTab('chat')}
+              className="text-amber-400 hover:text-amber-300 font-bold transition-colors cursor-pointer flex items-center gap-1"
+            >
+              <Bot className="w-3 h-3" />
+              <span>এআই সহকারী</span>
             </button>
             <span>•</span>
             <button
